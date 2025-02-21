@@ -27,3 +27,16 @@ pip install dask_jobqueue # this should also work
 
 You may need to restart Jupyter again if you do that, possibly.
 
+If you prefer to use ALRB, try:
+
+```
+export ATLAS_LOCAL_ROOT_BASE="/cvmfs/atlas.cern.ch/repo/ATLASLocalRootBase"
+alias setupATLAS="source ${ATLAS_LOCAL_ROOT_BASE}/user/atlasLocalSetup.sh"
+setupATLAS
+lsetup "python 3.11.9-x86_64-centos8"
+python3 -m venv lr-kernel
+source lr-kernel/bin/activate
+pip install -U pip
+pip install atlas-schema dask_jobqueue parse
+python3 -m ipykernel install --user --name=lr-kernel
+```
