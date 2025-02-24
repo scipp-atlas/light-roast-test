@@ -14,6 +14,9 @@ pixi add python=3.12
 pixi add atlas-schema
 pixi add ipykernel
 pixi add pixi-kernel
+pixi add numpy                  # this syntax should work in most cases, but maybe not all packages support this
+pixi add pip                    # if you need pip
+pip install dask_jobqueue parse # this should also work
 python -m ipykernel install --user --name=light-roast-kernel
 ```
 
@@ -21,12 +24,10 @@ Then restart your Jupyter server.  On restart, you should see an option to use t
 
 ```
 pixi shell
-pixi add numpy            # this syntax should work in most cases, but maybe not all packages support this
-pixi add pip              # if you need pip
-pip install dask_jobqueue # this should also work
+pip install parse               # this should also work
 ```
 
-You may need to restart Jupyter again if you do that, possibly.
+You may need to restart your Jupyter server (not just the kernel) again if you do that.
 
 If you prefer to use ALRB, you can try something like the following, but I don't find that it works for me:
 
