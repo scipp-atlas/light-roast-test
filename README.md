@@ -42,3 +42,6 @@ pip3 install --upgrade pip
 pip3 install atlas-schema dask_jobqueue parse ipykernel
 python3 -m ipykernel install --user --name=lr-kernel
 ```
+
+The tool referenced [here](https://github.com/matthewfeickert/cvmfs-venv) may help with getting the environment right, but I'm not sure that's the problem.
+
