@@ -13,6 +13,7 @@ pixi init
 pixi add python=3.12
 pixi add atlas-schema
 pixi add ipykernel
+pixi add pixi-kernel
 python -m ipykernel install --user --name=light-roast-kernel
 ```
 
@@ -27,7 +28,7 @@ pip install dask_jobqueue # this should also work
 
 You may need to restart Jupyter again if you do that, possibly.
 
-If you prefer to use ALRB, try:
+If you prefer to use ALRB, you can try something like the following, but I don't find that it works for me:
 
 ```
 export ATLAS_LOCAL_ROOT_BASE="/cvmfs/atlas.cern.ch/repo/ATLASLocalRootBase"
