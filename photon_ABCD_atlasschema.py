@@ -173,8 +173,8 @@ if __name__ == "__main__":
     start_time = time.time()
     
     cluster=None
-    dataset_to_run=None
-    can_submit_to_condor=True
+    dataset=None
+    can_submit_to_condor=False
     
     if can_submit_to_condor:
         # To facilitate usage with HTCondor
@@ -187,22 +187,27 @@ if __name__ == "__main__":
         cluster.scale(jobs=100)
     
         # if we're running over all samples, ensure that here
-        dataset_runnable = json.loads(Path("af_v2.json").read_text())
-        dataset_to_run=dataset_runnable
+        #inputfiles="af_v2.json"      # data+MC
+        inputfiles="af_v2_mc.json"   # MC
+        #inputfiles="af_v2_data.json" # data
+        
+        dataset = json.loads(Path(inputfiles).read_text())
     else:
         cluster=LocalCluster()
-        dataset_runnable = json.loads(Path("af_v2_onefile.json").read_text())
-        datasettag='Znunugamma'
-        dataset_to_run={datasettag: dataset_runnable[datasettag]}
-    
-    
+        
+        inputfiles="af_v2_mc_onefile.json"   # MC
+        #inputfiles="af_v2_data_onefile.json" # data
+
+        dataset = json.loads(Path(inputfiles).read_text())
+        
+        
     client = Client(cluster)
     
     print("Applying to fileset")
     my_processor = MyProcessor()    
     out = apply_to_fileset(
         my_processor,
-        dataset_to_run,
+        dataset,
         schemaclass=NtupleSchema,
     )
     
