@@ -83,8 +83,8 @@ class MyProcessor(processor.ProcessorABC):
         # here are some selection cuts for something that looks like the signal region.
         # the only thing that's different is the MET requirement, which I inverted to be
         # met<250 instead of met>250, to make sure we don't accidentally unblind the SR
-        selections = {
-            "met": (events.met.met > 250 * 1.0e3),
+        SR_selections = {
+            "met": (events.met.met < 250 * 1.0e3),
             "lepton_veto": (ak.sum(leptons.pt, axis=1) == 0),
             "leading_jet_pt": (ak.firsts(events.jet.pt) > 100 * 1.0e3),
             "min_dphi_jet_met": (ak.min(abs(events.met.delta_phi(events.jet)), axis=1) > 0.4),
@@ -92,75 +92,80 @@ class MyProcessor(processor.ProcessorABC):
         }
 
         if isMC:
-            selections["vgamma_overlap"] = (events["in"]["vgamma_overlap_7"]==1)
+            SR_selections["vgamma_overlap"] = (events["in"]["vgamma_overlap_7"]==1)
         
-        selection = PackedSelection()
-        selection.add_multiple(selections)
+        SR_selection = PackedSelection()
+        SR_selection.add_multiple(SR_selections)
 
-        SR=(selection.all())
-        presel_events=events[SR]
+        SR_presel         = SR_selection.all()
+        SR_presel_events  = events[SR_presel]
+        SR_presel_entries = ak.num(SR_presel_events,axis=0)
         
         # photon object preselection
-        ph_preselection = (
-            (presel_events.ph.pt > 10000) &
-            (presel_events.ph.select_baseline == 1) &
-            ((presel_events.ph.isEM&0x45fc01) == 0) &
-            (
-             (abs(presel_events.ph.eta)<1.37) | ((abs(presel_events.ph.eta)>1.52) & 
-                                                 (abs(presel_events.ph.eta)<2.37))
-            ) &
-            (presel_events.ph.select_or_dR02Ph == 1)
+        SR_ph_preselection = (
+            (SR_presel_events.ph.pt > 10000) &
+            (SR_presel_events.ph.select_baseline == 1) &
+            ((SR_presel_events.ph.isEM&0x45fc01) == 0) &
+            ((abs(SR_presel_events.ph.eta)<1.37) | ((abs(SR_presel_events.ph.eta)>1.52) & 
+                                                    (abs(SR_presel_events.ph.eta)<2.37))) &
+            (SR_presel_events.ph.select_or_dR02Ph == 1)
         )
 
         # this selects events with at least one baseline photon
-        ph_presel_data=presel_events[ak.any(ph_preselection,axis=1)]
-
-        # define tight and loose cuts, now on the smaller data sample that only has good events
-        ph_preselection=((ph_presel_data.ph.pt>10000) & 
-                         (
-                             (abs(ph_presel_data.ph.eta)<1.37) | ((abs(ph_presel_data.ph.eta)>1.52) & 
-                                                                  (abs(ph_presel_data.ph.eta)<2.37))
-                         ) &
-                         (ph_presel_data.ph.select_or_dR02Ph==1) &
-                         ((ph_presel_data.ph.isEM&0x45fc01)==0) &
-                         (ph_presel_data.ph.select_baseline==1)
-                        )
-
-        # get the index of the first preselected photon (which should be the leading preselected photon)
-        indices=ak.unflatten(ak.argmax(ph_preselection,axis=1),1)
+        SR_ph_presel_data = SR_presel_events[ak.any(SR_ph_preselection,axis=1)]
+        SR_entries        = ak.num(SR_ph_presel_data,axis=0)
         
-        # apply cuts to that index
-        ph_tight = (ak.firsts(ph_presel_data.ph[indices].select_tightID)==1)
-        ph_iso   = (ak.firsts(ph_presel_data.ph[indices].select_tightIso)==1)
+        # define tight and loose cuts, now on the smaller data sample that only has good events
+        SR_ph_selection=((SR_ph_presel_data.ph.pt>10000) & 
+                         ((abs(SR_ph_presel_data.ph.eta)<1.37) | ((abs(SR_ph_presel_data.ph.eta)>1.52) & 
+                                                                  (abs(SR_ph_presel_data.ph.eta)<2.37))) &
+                         (SR_ph_presel_data.ph.select_or_dR02Ph==1) &
+                         ((SR_ph_presel_data.ph.isEM&0x45fc01)==0) &
+                         (SR_ph_presel_data.ph.select_baseline==1)
+                        )      
 
         ABCD=None
-        if isMC:
-            ph_truth = ((ak.firsts(ph_presel_data.ph[indices].truthType) != 0) &
-                        (ak.firsts(ph_presel_data.ph[indices].truthType) != 16))
-            ABCD={
-                "A_true": ak.num(ph_presel_data.ph[indices].pt[ ph_tight & ~ph_iso &  ph_truth][:,0],axis=0),
-                "B_true": ak.num(ph_presel_data.ph[indices].pt[~ph_tight & ~ph_iso &  ph_truth][:,0],axis=0),
-                "C_true": ak.num(ph_presel_data.ph[indices].pt[ ph_tight &  ph_iso &  ph_truth][:,0],axis=0),
-                "D_true": ak.num(ph_presel_data.ph[indices].pt[~ph_tight &  ph_iso &  ph_truth][:,0],axis=0),
-                "A_fake": ak.num(ph_presel_data.ph[indices].pt[ ph_tight & ~ph_iso & ~ph_truth][:,0],axis=0),
-                "B_fake": ak.num(ph_presel_data.ph[indices].pt[~ph_tight & ~ph_iso & ~ph_truth][:,0],axis=0),
-                "C_fake": ak.num(ph_presel_data.ph[indices].pt[ ph_tight &  ph_iso & ~ph_truth][:,0],axis=0),
-                "D_fake": ak.num(ph_presel_data.ph[indices].pt[~ph_tight &  ph_iso & ~ph_truth][:,0],axis=0),
-            }
-        else:
-            ABCD = {
-                "A_data": ak.num(ph_presel_data.ph[indices].pt[ ph_tight & ~ph_iso][:,0],axis=0),
-                "B_data": ak.num(ph_presel_data.ph[indices].pt[~ph_tight & ~ph_iso][:,0],axis=0),
-                "C_data": ak.num(ph_presel_data.ph[indices].pt[ ph_tight &  ph_iso][:,0],axis=0) if unblindSR else 0.,
-                "D_data": ak.num(ph_presel_data.ph[indices].pt[~ph_tight &  ph_iso][:,0],axis=0),
-            }
+        if ak.num(SR_ph_selection,axis=0)>0 and SR_entries>0:
+            # get the index of the first preselected photon (which should be the leading preselected photon)
+            indices=ak.argmax(SR_ph_selection,axis=1,keepdims=True)
             
+            # apply cuts to that index
+            ph_tight = (ak.firsts(SR_ph_presel_data.ph[indices].select_tightID)==1)
+            ph_iso   = (ak.firsts(SR_ph_presel_data.ph[indices].select_tightIso)==1)
+    
+            if isMC:
+                ph_truth = ((ak.firsts(SR_ph_presel_data.ph[indices].truthType) != 0) &
+                            (ak.firsts(SR_ph_presel_data.ph[indices].truthType) != 16))
+                ABCD={
+                    "A_true": ak.num(SR_ph_presel_data.ph[indices].pt[ ph_tight & ~ph_iso &  ph_truth][:,0],axis=0),
+                    "B_true": ak.num(SR_ph_presel_data.ph[indices].pt[~ph_tight & ~ph_iso &  ph_truth][:,0],axis=0),
+                    "C_true": ak.num(SR_ph_presel_data.ph[indices].pt[ ph_tight &  ph_iso &  ph_truth][:,0],axis=0),
+                    "D_true": ak.num(SR_ph_presel_data.ph[indices].pt[~ph_tight &  ph_iso &  ph_truth][:,0],axis=0),
+                    "A_fake": ak.num(SR_ph_presel_data.ph[indices].pt[ ph_tight & ~ph_iso & ~ph_truth][:,0],axis=0),
+                    "B_fake": ak.num(SR_ph_presel_data.ph[indices].pt[~ph_tight & ~ph_iso & ~ph_truth][:,0],axis=0),
+                    "C_fake": ak.num(SR_ph_presel_data.ph[indices].pt[ ph_tight &  ph_iso & ~ph_truth][:,0],axis=0),
+                    "D_fake": ak.num(SR_ph_presel_data.ph[indices].pt[~ph_tight &  ph_iso & ~ph_truth][:,0],axis=0),
+                }
+            else:
+                ABCD = {
+                    "A_data": ak.num(SR_ph_presel_data.ph[indices].pt[ ph_tight & ~ph_iso][:,0],axis=0),
+                    "B_data": ak.num(SR_ph_presel_data.ph[indices].pt[~ph_tight & ~ph_iso][:,0],axis=0),
+                    "C_data": ak.num(SR_ph_presel_data.ph[indices].pt[ ph_tight &  ph_iso][:,0],axis=0) if unblindSR else 0.,
+                    "D_data": ak.num(SR_ph_presel_data.ph[indices].pt[~ph_tight &  ph_iso][:,0],axis=0),
+                }
+        else:
+            ABCD={"ak.num(SR_ph_selection,axis=0)": ak.num(SR_ph_selection,axis=0),
+                 "ak.argmax(SR_ph_selection,axis=1)": ak.argmax(SR_ph_selection,axis=1)}
+
         return {
             "total": {
                 "entries": ak.num(events, axis=0)
             },
             "presel": {
-                "total": ak.num(presel_events,axis=0),
+                "entries": SR_presel_entries,
+            },
+            "SR":{
+                "entries": SR_entries,
             },
             "ABCD": ABCD
         }
@@ -174,7 +179,7 @@ if __name__ == "__main__":
     
     cluster=None
     dataset=None
-    can_submit_to_condor=False
+    can_submit_to_condor=True
     
     if can_submit_to_condor:
         # To facilitate usage with HTCondor
@@ -183,23 +188,46 @@ if __name__ == "__main__":
             cores=4,
             memory="4GB",
             disk="2GB",
+            #silence_logs="debug",
         )
         cluster.scale(jobs=100)
     
         # if we're running over all samples, ensure that here
-        #inputfiles="af_v2.json"      # data+MC
-        inputfiles="af_v2_mc.json"   # MC
-        #inputfiles="af_v2_data.json" # data
+        #inputfiles="af_v2_2.json"      # data+MC
+        inputfiles="af_v2_2_mc.json"   # MC
+        #inputfiles="af_v2_2_data.json" # data
         
         dataset = json.loads(Path(inputfiles).read_text())
+        
+        #datasettag="Znunugamma"
+        #datasettag="Wenu_BFilter"
+        #dataset = {datasettag: dataset[datasettag]}
+
     else:
         cluster=LocalCluster()
         
-        inputfiles="af_v2_mc_onefile.json"   # MC
-        #inputfiles="af_v2_data_onefile.json" # data
+        #inputfiles="af_v2_2_mc_onefile.json"   # MC
+        inputfiles="af_v2_2_mc.json"
+        #inputfiles="af_v2_2_data_onefile.json" # data
 
         dataset = json.loads(Path(inputfiles).read_text())
-        
+
+        if True:
+            datasettag="Wenu_BFilter" #"Znunugamma" #"Wenu_BFilter"
+            dataset = {datasettag: dataset[datasettag]}
+
+            if False:
+                nfiles=len(list(dataset[datasettag]["files"].keys()))
+                print(nfiles)
+                filestart=20
+                fileend=21
+                filecount=0
+                for k in list(dataset[datasettag]["files"].keys()):
+                    if filecount < filestart or filecount >= fileend:
+                        del dataset[datasettag]["files"][k]
+                    filecount+=1
+                
+
         
     client = Client(cluster)
     
