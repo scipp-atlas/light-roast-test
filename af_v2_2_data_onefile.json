@@ -1,0 +1,40 @@
+{
+    "data_2017": {
+        "files": {
+            "/data/kratsg/radiative-decays/user.bhodkins.data2017_AllYear.v2.0_ANALYSIS.root/user.bhodkins.42164743._000036.ANALYSIS.root": {
+                "num_entries": 228980,
+                "object_path": "analysis",
+                "steps": [
+                    [
+                        0,
+                        45796
+                    ],
+                    [
+                        45796,
+                        91592
+                    ],
+                    [
+                        91592,
+                        137388
+                    ],
+                    [
+                        137388,
+                        183184
+                    ],
+                    [
+                        183184,
+                        228980
+                    ]
+                ],
+                "uuid": "4cc4b98c-a99f-11ef-b049-6bf88e80beef"
+            }
+        },
+        "form": null,
+        "metadata": {
+            "genFiltEff": 1.0,
+            "luminosity": 140,
+            "process": "data_2017",
+            "xs": 1.0
+        }
+    }
+}
