@@ -12,6 +12,7 @@ import dask_awkward as dak
 import parse
 import atlas_schema
 import numpy as np
+import uproot
 
 import coffea
 
@@ -21,7 +22,7 @@ from coffea import processor
 from coffea.analysis_tools import PackedSelection
 from coffea.dataset_tools import apply_to_fileset
 from dask.diagnostics import ProgressBar
-from dask.distributed import Client
+from dask.distributed import Client, progress
 from dask_jobqueue.htcondor import HTCondorCluster
 from dask.distributed import LocalCluster
 from matplotlib import pyplot as plt
@@ -55,10 +56,28 @@ warnings.filterwarnings('ignore')
 
 class MyProcessor(processor.ProcessorABC):
     def __init__(self):
-        # can define histograms here
-        pass
+        self._accumulator = {
+            "ntuple": {
+                "ph_pt": [],
+                "ph_eta": [],
+                "ph_select_tightID": [],
+                "ph_isEM": [],
+                "ph_select_tightIso": [],
+                "ph_truthType": [],
+                "ph_truthOrigin": [],
+                "met_met": [],
+                "met_phi": []
+            }
+        }
 
+    @property
+    def accumulator(self):
+        return self._accumulator
+        
     def process(self, events):
+        
+        output = self.accumulator
+        
         ## TODO: remove this temporary fix when https://github.com/scikit-hep/vector/issues/498 is resolved
         met_dict = {field: events.met[field] for field in events.met.fields}
         met_dict["pt"] = dak.zeros_like(events.met.met)
@@ -125,62 +144,68 @@ class MyProcessor(processor.ProcessorABC):
                         )      
 
         ABCD=None
-        if ak.num(SR_ph_selection,axis=0)>0 and SR_entries>0:
-            # get the index of the first preselected photon (which should be the leading preselected photon)
-            indices=ak.argmax(SR_ph_selection,axis=1,keepdims=True)
-            
-            # apply cuts to that index
-            ph_tight = (ak.firsts(SR_ph_presel_data.ph[indices].select_tightID)==1)
-            ph_iso   = (ak.firsts(SR_ph_presel_data.ph[indices].select_tightIso)==1)
-    
-            if isMC:
-                ph_truth = ((ak.firsts(SR_ph_presel_data.ph[indices].truthType) != 0) &
-                            (ak.firsts(SR_ph_presel_data.ph[indices].truthType) != 16))
-                ABCD={
-                    "A_true": ak.num(SR_ph_presel_data.ph[indices].pt[ ph_tight & ~ph_iso &  ph_truth][:,0],axis=0),
-                    "B_true": ak.num(SR_ph_presel_data.ph[indices].pt[~ph_tight & ~ph_iso &  ph_truth][:,0],axis=0),
-                    "C_true": ak.num(SR_ph_presel_data.ph[indices].pt[ ph_tight &  ph_iso &  ph_truth][:,0],axis=0),
-                    "D_true": ak.num(SR_ph_presel_data.ph[indices].pt[~ph_tight &  ph_iso &  ph_truth][:,0],axis=0),
-                    "A_fake": ak.num(SR_ph_presel_data.ph[indices].pt[ ph_tight & ~ph_iso & ~ph_truth][:,0],axis=0),
-                    "B_fake": ak.num(SR_ph_presel_data.ph[indices].pt[~ph_tight & ~ph_iso & ~ph_truth][:,0],axis=0),
-                    "C_fake": ak.num(SR_ph_presel_data.ph[indices].pt[ ph_tight &  ph_iso & ~ph_truth][:,0],axis=0),
-                    "D_fake": ak.num(SR_ph_presel_data.ph[indices].pt[~ph_tight &  ph_iso & ~ph_truth][:,0],axis=0),
-                }
-            else:
-                ABCD = {
-                    "A_data": ak.num(SR_ph_presel_data.ph[indices].pt[ ph_tight & ~ph_iso][:,0],axis=0),
-                    "B_data": ak.num(SR_ph_presel_data.ph[indices].pt[~ph_tight & ~ph_iso][:,0],axis=0),
-                    "C_data": ak.num(SR_ph_presel_data.ph[indices].pt[ ph_tight &  ph_iso][:,0],axis=0) if unblindSR else 0.,
-                    "D_data": ak.num(SR_ph_presel_data.ph[indices].pt[~ph_tight &  ph_iso][:,0],axis=0),
-                }
-        else:
-            ABCD={"ak.num(SR_ph_selection,axis=0)": ak.num(SR_ph_selection,axis=0),
-                 "ak.argmax(SR_ph_selection,axis=1)": ak.argmax(SR_ph_selection,axis=1)}
+        # get the index of the first preselected photon (which should be the leading preselected photon)
+        indices=ak.argmax(SR_ph_selection,axis=1,keepdims=True)
+        
+        # apply cuts to that index
+        ph_tight = (ak.firsts(SR_ph_presel_data.ph[indices].select_tightID)==1)
+        ph_iso   = (ak.firsts(SR_ph_presel_data.ph[indices].select_tightIso)==1)
 
-        return {
-            "total": {
-                "entries": ak.num(events, axis=0)
-            },
-            "presel": {
-                "entries": SR_presel_entries,
-            },
-            "SR":{
-                "entries": SR_entries,
-            },
-            "ABCD": ABCD
-        }
+        if isMC:
+            ph_truth = ((ak.firsts(SR_ph_presel_data.ph[indices].truthType) != 0) &
+                        (ak.firsts(SR_ph_presel_data.ph[indices].truthType) != 16))
+            ABCD={
+                "A_true": ak.num(SR_ph_presel_data.ph[indices].pt[ ph_tight & ~ph_iso &  ph_truth][:,0],axis=0),
+                "B_true": ak.num(SR_ph_presel_data.ph[indices].pt[~ph_tight & ~ph_iso &  ph_truth][:,0],axis=0),
+                "C_true": ak.num(SR_ph_presel_data.ph[indices].pt[ ph_tight &  ph_iso &  ph_truth][:,0],axis=0),
+                "D_true": ak.num(SR_ph_presel_data.ph[indices].pt[~ph_tight &  ph_iso &  ph_truth][:,0],axis=0),
+                "A_fake": ak.num(SR_ph_presel_data.ph[indices].pt[ ph_tight & ~ph_iso & ~ph_truth][:,0],axis=0),
+                "B_fake": ak.num(SR_ph_presel_data.ph[indices].pt[~ph_tight & ~ph_iso & ~ph_truth][:,0],axis=0),
+                "C_fake": ak.num(SR_ph_presel_data.ph[indices].pt[ ph_tight &  ph_iso & ~ph_truth][:,0],axis=0),
+                "D_fake": ak.num(SR_ph_presel_data.ph[indices].pt[~ph_tight &  ph_iso & ~ph_truth][:,0],axis=0),
+            }
+        else:
+            ABCD = {
+                "A_data": ak.num(SR_ph_presel_data.ph[indices].pt[ ph_tight & ~ph_iso][:,0],axis=0),
+                "B_data": ak.num(SR_ph_presel_data.ph[indices].pt[~ph_tight & ~ph_iso][:,0],axis=0),
+                "C_data": ak.num(SR_ph_presel_data.ph[indices].pt[ ph_tight &  ph_iso][:,0],axis=0) if unblindSR else 0.,
+                "D_data": ak.num(SR_ph_presel_data.ph[indices].pt[~ph_tight &  ph_iso][:,0],axis=0),
+            }
+
+        # Extract some event-level data
+        output["ntuple"]["ph_pt"].append(SR_ph_presel_data.ph[indices].pt)
+        output["ntuple"]["ph_eta"].append(SR_ph_presel_data.ph[indices].eta)
+        output["ntuple"]["ph_select_tightID"].append(SR_ph_presel_data.ph[indices].select_tightID)
+        output["ntuple"]["ph_isEM"].append(SR_ph_presel_data.ph[indices].isEM)
+        output["ntuple"]["ph_select_tightIso"].append(SR_ph_presel_data.ph[indices].select_tightIso)
+        output["ntuple"]["ph_truthType"].append(SR_ph_presel_data.ph[indices].truthType)
+        output["ntuple"]["ph_truthOrigin"].append(SR_ph_presel_data.ph[indices].truthOrigin)
+        output["ntuple"]["met_met"].append(SR_ph_presel_data.met.met)
+        output["ntuple"]["met_phi"].append(SR_ph_presel_data.met.phi)
+        
+        output["total"]  = ak.num(events, axis=0)
+        output["presel"] = SR_presel_entries
+        output["SR"]     = SR_entries
+        output["ABCD"]   = ABCD
+
+        return output
 
     def postprocess(self, accumulator):
         pass
 
 
 if __name__ == "__main__":
-    start_time = time.time()
-    
+
+    # job configuration
+    can_submit_to_condor=False
+
+    # ---------------------------------------------------------------------------
     cluster=None
     dataset=None
-    can_submit_to_condor=True
-    
+
+    # Set this up first to catch obvious problems
+    my_processor = MyProcessor()    
+
     if can_submit_to_condor:
         # To facilitate usage with HTCondor
         cluster = HTCondorCluster(
@@ -205,15 +230,15 @@ if __name__ == "__main__":
 
     else:
         cluster=LocalCluster()
-        
-        #inputfiles="af_v2_2_mc_onefile.json"   # MC
-        inputfiles="af_v2_2_mc.json"
+
+        inputfiles="af_v2_2_mc_onefile.json"   # MC
+        #inputfiles="af_v2_2_mc.json"
         #inputfiles="af_v2_2_data_onefile.json" # data
 
         dataset = json.loads(Path(inputfiles).read_text())
 
-        if True:
-            datasettag="Wenu_BFilter" #"Znunugamma" #"Wenu_BFilter"
+        if not "onefile" in inputfiles:
+            datasettag="Znunugamma" #"Wenu_BFilter"
             dataset = {datasettag: dataset[datasettag]}
 
             if False:
@@ -226,31 +251,48 @@ if __name__ == "__main__":
                     if filecount < filestart or filecount >= fileend:
                         del dataset[datasettag]["files"][k]
                     filecount+=1
-                
-
         
     client = Client(cluster)
+    # ---------------------------------------------------------------------------
     
+    # ---------------------------------------------------------------------------
+    # construct and run the job
     print("Applying to fileset")
-    my_processor = MyProcessor()    
     out = apply_to_fileset(
         my_processor,
         dataset,
         schemaclass=NtupleSchema,
     )
     
-    print("Beginning of dask.compute()")
-    
-    # Add progress bar for dask
-    pbar = ProgressBar()
-    pbar.register()
+    print("Beginning of dask.compute()")  
+    start_time = time.time()
     
     (computed,) = dask.compute(out)
-    end_time = time.time()
     
+    end_time = time.time()
     print("Execution time: ", end_time - start_time)
     print("Finished dask.compute")
+    # ---------------------------------------------------------------------------
 
+    # ---------------------------------------------------------------------------
+    # Write ntuples out
+    for sample in list(computed.keys()):
+        print(len(computed[sample]["ntuple"]["ph_pt"]))
+              
+        data = {}
+        for var in list(computed[sample]["ntuple"].keys()):
+            data[var] = computed[sample]["ntuple"][var][0].to_numpy()
+        
+        # Write to a ROOT file using uproot
+        with uproot.recreate(f"output_{sample}.root") as f:
+            f["mytree"] = data  # uproot can write directly from Awkward arrays
+
+        # remove ntuple before serializing everything else
+        del computed[sample]["ntuple"]
+    # ---------------------------------------------------------------------------
+
+    # ---------------------------------------------------------------------------
+    # write out JSON summaries for ABCD calculation
     class NpEncoder(json.JSONEncoder):
         def default(self, obj):
             if isinstance(obj, np.integer):
@@ -264,3 +306,4 @@ if __name__ == "__main__":
     print(json.dumps(computed,indent=4, cls=NpEncoder))
     with open('results.json', 'w') as fp:
         json.dump(computed, fp, indent=4, cls=NpEncoder)
+    # ---------------------------------------------------------------------------
