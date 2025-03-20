@@ -67,6 +67,7 @@ class MyProcessor(processor.ProcessorABC):
         events["met"] = dak.zip(met_dict, with_name="MissingET", behavior=as_behavior)
 
         dataset = events.metadata["dataset"]
+        isMC = not "data" in dataset
         
         print(f"processing {len(events)} events for {dataset}")
         # xs = events.metadata["xs"]
@@ -76,7 +77,6 @@ class MyProcessor(processor.ProcessorABC):
         # evt_count = ak.num(events, axis=0).compute()
         # weights = (xs * genFiltEff * lum / evt_count) * np.ones(evt_count)
 
-        isMC = not "data" in dataset
         unblindSR = False
         
         leptons = ak.concatenate((events.el, events.mu), axis=1)
@@ -105,7 +105,6 @@ class MyProcessor(processor.ProcessorABC):
         SR_ph_preselection = (
             (SR_presel_events.ph.pt > 10000) &
             (SR_presel_events.ph.select_baseline == 1) &
-            ((SR_presel_events.ph.isEM&0x45fc01) == 0) &
             ((abs(SR_presel_events.ph.eta)<1.37) | ((abs(SR_presel_events.ph.eta)>1.52) & 
                                                     (abs(SR_presel_events.ph.eta)<2.37))) &
             (SR_presel_events.ph.select_or_dR02Ph == 1)
@@ -115,41 +114,43 @@ class MyProcessor(processor.ProcessorABC):
         SR_ph_presel_data = SR_presel_events[ak.any(SR_ph_preselection,axis=1)]
         
         # define tight and loose cuts, now on the smaller data sample that only has good events
-        SR_ph_selection=((SR_ph_presel_data.ph.pt>10000) & 
-                         ((abs(SR_ph_presel_data.ph.eta)<1.37) | ((abs(SR_ph_presel_data.ph.eta)>1.52) & 
-                                                                  (abs(SR_ph_presel_data.ph.eta)<2.37))) &
-                         (SR_ph_presel_data.ph.select_or_dR02Ph==1) &
-                         ((SR_ph_presel_data.ph.isEM&0x45fc01)==0) &
-                         (SR_ph_presel_data.ph.select_baseline==1)
-                        )      
+        SR_ph_selection = (
+            (SR_ph_presel_data.ph.pt > 10000) &
+            (SR_ph_presel_data.ph.select_baseline==1) & 
+            ((abs(SR_ph_presel_data.ph.eta)<1.37) | ((abs(SR_ph_presel_data.ph.eta)>1.52) & 
+                                                     (abs(SR_ph_presel_data.ph.eta)<2.37))) &
+            (SR_ph_presel_data.ph.select_or_dR02Ph==1)
+        )      
 
-        ABCD=None
-        # get the index of the first preselected photon (which should be the leading preselected photon)
+        # get the index of the first preselected photon (i.e. the leading preselected photon)
         indices=ak.argmax(SR_ph_selection,axis=1,keepdims=True)
         
-        # apply cuts to that index
-        ph_tight = (ak.firsts(SR_ph_presel_data.ph[indices].select_tightID)==1)
-        ph_iso   = (ak.firsts(SR_ph_presel_data.ph[indices].select_tightIso)==1)
+        # apply cuts to the photon at that index
+        ph_loosep = (ak.firsts(SR_ph_presel_data.ph[indices].isEM&0x45fc01)==0)
+        ph_tight  = (ak.firsts(SR_ph_presel_data.ph[indices].select_tightID)==1)
+        ph_iso    = (ak.firsts(SR_ph_presel_data.ph[indices].select_tightIso)==1)
 
+        ABCD=None
+        
         if isMC:
             ph_truth = ((ak.firsts(SR_ph_presel_data.ph[indices].truthType) != 0) &
                         (ak.firsts(SR_ph_presel_data.ph[indices].truthType) != 16))
             ABCD={
-                "A_true": ak.num(SR_ph_presel_data.ph[indices].pt[ ph_tight & ~ph_iso &  ph_truth][:,0],axis=0),
-                "B_true": ak.num(SR_ph_presel_data.ph[indices].pt[~ph_tight & ~ph_iso &  ph_truth][:,0],axis=0),
-                "C_true": ak.num(SR_ph_presel_data.ph[indices].pt[ ph_tight &  ph_iso &  ph_truth][:,0],axis=0),
-                "D_true": ak.num(SR_ph_presel_data.ph[indices].pt[~ph_tight &  ph_iso &  ph_truth][:,0],axis=0),
-                "A_fake": ak.num(SR_ph_presel_data.ph[indices].pt[ ph_tight & ~ph_iso & ~ph_truth][:,0],axis=0),
-                "B_fake": ak.num(SR_ph_presel_data.ph[indices].pt[~ph_tight & ~ph_iso & ~ph_truth][:,0],axis=0),
-                "C_fake": ak.num(SR_ph_presel_data.ph[indices].pt[ ph_tight &  ph_iso & ~ph_truth][:,0],axis=0),
-                "D_fake": ak.num(SR_ph_presel_data.ph[indices].pt[~ph_tight &  ph_iso & ~ph_truth][:,0],axis=0),
+                "A_true": ak.num(SR_ph_presel_data.ph[indices].pt[             ph_tight & ~ph_iso &  ph_truth][:,0],axis=0),
+                "B_true": ak.num(SR_ph_presel_data.ph[indices].pt[ph_loosep & ~ph_tight & ~ph_iso &  ph_truth][:,0],axis=0),
+                "C_true": ak.num(SR_ph_presel_data.ph[indices].pt[             ph_tight &  ph_iso &  ph_truth][:,0],axis=0),
+                "D_true": ak.num(SR_ph_presel_data.ph[indices].pt[ph_loosep & ~ph_tight &  ph_iso &  ph_truth][:,0],axis=0),
+                "A_fake": ak.num(SR_ph_presel_data.ph[indices].pt[             ph_tight & ~ph_iso & ~ph_truth][:,0],axis=0),
+                "B_fake": ak.num(SR_ph_presel_data.ph[indices].pt[ph_loosep & ~ph_tight & ~ph_iso & ~ph_truth][:,0],axis=0),
+                "C_fake": ak.num(SR_ph_presel_data.ph[indices].pt[             ph_tight &  ph_iso & ~ph_truth][:,0],axis=0),
+                "D_fake": ak.num(SR_ph_presel_data.ph[indices].pt[ph_loosep & ~ph_tight &  ph_iso & ~ph_truth][:,0],axis=0),
             }
         else:
             ABCD = {
-                "A_data": ak.num(SR_ph_presel_data.ph[indices].pt[ ph_tight & ~ph_iso][:,0],axis=0),
-                "B_data": ak.num(SR_ph_presel_data.ph[indices].pt[~ph_tight & ~ph_iso][:,0],axis=0),
-                "C_data": ak.num(SR_ph_presel_data.ph[indices].pt[ ph_tight &  ph_iso][:,0],axis=0) if unblindSR else 0.,
-                "D_data": ak.num(SR_ph_presel_data.ph[indices].pt[~ph_tight &  ph_iso][:,0],axis=0),
+                "A_data": ak.num(SR_ph_presel_data.ph[indices].pt[             ph_tight & ~ph_iso][:,0],axis=0),
+                "B_data": ak.num(SR_ph_presel_data.ph[indices].pt[ph_loosep & ~ph_tight & ~ph_iso][:,0],axis=0),
+                "C_data": ak.num(SR_ph_presel_data.ph[indices].pt[             ph_tight &  ph_iso][:,0],axis=0) if unblindSR else 0.,
+                "D_data": ak.num(SR_ph_presel_data.ph[indices].pt[ph_loosep & ~ph_tight &  ph_iso][:,0],axis=0),
             }
 
         # Extract some event-level data
@@ -160,8 +161,9 @@ class MyProcessor(processor.ProcessorABC):
         output["ntuple"]["ph_select_tightID"]=SR_ph_presel_data.ph[indices].select_tightID
         output["ntuple"]["ph_isEM"]=SR_ph_presel_data.ph[indices].isEM
         output["ntuple"]["ph_select_tightIso"]=SR_ph_presel_data.ph[indices].select_tightIso
-        output["ntuple"]["ph_truthType"]=SR_ph_presel_data.ph[indices].truthType
-        output["ntuple"]["ph_truthOrigin"]=SR_ph_presel_data.ph[indices].truthOrigin
+        if isMC:
+            output["ntuple"]["ph_truthType"]=SR_ph_presel_data.ph[indices].truthType
+            output["ntuple"]["ph_truthOrigin"]=SR_ph_presel_data.ph[indices].truthOrigin
         output["ntuple"]["met_met"]=SR_ph_presel_data.met.met
         output["ntuple"]["met_phi"]=SR_ph_presel_data.met.phi
 
@@ -188,6 +190,8 @@ if __name__ == "__main__":
     # Set this up first to catch obvious problems
     my_processor = MyProcessor()    
 
+    inputfiles=None
+    
     if can_submit_to_condor:
         # To facilitate usage with HTCondor
         cluster = HTCondorCluster(
@@ -197,12 +201,12 @@ if __name__ == "__main__":
             disk="4GB",
             #silence_logs="debug",
         )
-        cluster.scale(jobs=100)
+        cluster.scale(jobs=300)
     
         # if we're running over all samples, ensure that here
         #inputfiles="af_v2_2.json"      # data+MC
-        inputfiles="af_v2_2_mc.json"   # MC
-        #inputfiles="af_v2_2_data.json" # data
+        #inputfiles="af_v2_2_mc.json"   # MC
+        inputfiles="af_v2_2_data.json" # data
         
         dataset = json.loads(Path(inputfiles).read_text())
         
@@ -214,9 +218,9 @@ if __name__ == "__main__":
     else:
         cluster=LocalCluster()
 
-        inputfiles="af_v2_2_mc_onefile.json"   # MC
+        #inputfiles="af_v2_2_mc_onefile.json"   # MC
         #inputfiles="af_v2_2_mc.json"
-        #inputfiles="af_v2_2_data_onefile.json" # data
+        inputfiles="af_v2_2_data_onefile.json" # data
 
         dataset = json.loads(Path(inputfiles).read_text())
 
@@ -287,6 +291,6 @@ if __name__ == "__main__":
             return super(NpEncoder, self).default(obj)
 
     print(json.dumps(computed,indent=4, cls=NpEncoder))
-    with open('results.json', 'w') as fp:
+    with open(f"results__{inputfiles}", 'w') as fp:
         json.dump(computed, fp, indent=4, cls=NpEncoder)
     # ---------------------------------------------------------------------------
