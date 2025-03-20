@@ -56,27 +56,9 @@ warnings.filterwarnings('ignore')
 
 class MyProcessor(processor.ProcessorABC):
     def __init__(self):
-        self._accumulator = {
-            "ntuple": {
-                "ph_pt": [],
-                "ph_eta": [],
-                "ph_select_tightID": [],
-                "ph_isEM": [],
-                "ph_select_tightIso": [],
-                "ph_truthType": [],
-                "ph_truthOrigin": [],
-                "met_met": [],
-                "met_phi": []
-            }
-        }
-
-    @property
-    def accumulator(self):
-        return self._accumulator
+        pass
         
     def process(self, events):
-        
-        output = self.accumulator
         
         ## TODO: remove this temporary fix when https://github.com/scikit-hep/vector/issues/498 is resolved
         met_dict = {field: events.met[field] for field in events.met.fields}
@@ -118,7 +100,6 @@ class MyProcessor(processor.ProcessorABC):
 
         SR_presel         = SR_selection.all()
         SR_presel_events  = events[SR_presel]
-        SR_presel_entries = ak.num(SR_presel_events,axis=0)
         
         # photon object preselection
         SR_ph_preselection = (
@@ -132,7 +113,6 @@ class MyProcessor(processor.ProcessorABC):
 
         # this selects events with at least one baseline photon
         SR_ph_presel_data = SR_presel_events[ak.any(SR_ph_preselection,axis=1)]
-        SR_entries        = ak.num(SR_ph_presel_data,axis=0)
         
         # define tight and loose cuts, now on the smaller data sample that only has good events
         SR_ph_selection=((SR_ph_presel_data.ph.pt>10000) & 
@@ -173,20 +153,22 @@ class MyProcessor(processor.ProcessorABC):
             }
 
         # Extract some event-level data
-        output["ntuple"]["ph_pt"].append(SR_ph_presel_data.ph[indices].pt)
-        output["ntuple"]["ph_eta"].append(SR_ph_presel_data.ph[indices].eta)
-        output["ntuple"]["ph_select_tightID"].append(SR_ph_presel_data.ph[indices].select_tightID)
-        output["ntuple"]["ph_isEM"].append(SR_ph_presel_data.ph[indices].isEM)
-        output["ntuple"]["ph_select_tightIso"].append(SR_ph_presel_data.ph[indices].select_tightIso)
-        output["ntuple"]["ph_truthType"].append(SR_ph_presel_data.ph[indices].truthType)
-        output["ntuple"]["ph_truthOrigin"].append(SR_ph_presel_data.ph[indices].truthOrigin)
-        output["ntuple"]["met_met"].append(SR_ph_presel_data.met.met)
-        output["ntuple"]["met_phi"].append(SR_ph_presel_data.met.phi)
-        
-        output["total"]  = ak.num(events, axis=0)
-        output["presel"] = SR_presel_entries
-        output["SR"]     = SR_entries
-        output["ABCD"]   = ABCD
+        output={}
+        output["ntuple"]={}
+        output["ntuple"]["ph_pt"]=SR_ph_presel_data.ph[indices].pt
+        output["ntuple"]["ph_eta"]=SR_ph_presel_data.ph[indices].eta
+        output["ntuple"]["ph_select_tightID"]=SR_ph_presel_data.ph[indices].select_tightID
+        output["ntuple"]["ph_isEM"]=SR_ph_presel_data.ph[indices].isEM
+        output["ntuple"]["ph_select_tightIso"]=SR_ph_presel_data.ph[indices].select_tightIso
+        output["ntuple"]["ph_truthType"]=SR_ph_presel_data.ph[indices].truthType
+        output["ntuple"]["ph_truthOrigin"]=SR_ph_presel_data.ph[indices].truthOrigin
+        output["ntuple"]["met_met"]=SR_ph_presel_data.met.met
+        output["ntuple"]["met_phi"]=SR_ph_presel_data.met.phi
+
+        output["total"]= ak.num(events, axis=0)
+        output["presel"] = ak.num(SR_presel_events,axis=0)
+        output["SR"] = ak.num(SR_ph_presel_data,axis=0)
+        output["ABCD"] = ABCD
 
         return output
 
@@ -197,7 +179,7 @@ class MyProcessor(processor.ProcessorABC):
 if __name__ == "__main__":
 
     # job configuration
-    can_submit_to_condor=False
+    can_submit_to_condor=True
 
     # ---------------------------------------------------------------------------
     cluster=None
@@ -211,8 +193,8 @@ if __name__ == "__main__":
         cluster = HTCondorCluster(
             log_directory=Path().cwd() / ".condor_logs" / "cutflows_v2",
             cores=4,
-            memory="4GB",
-            disk="2GB",
+            memory="16GB",
+            disk="4GB",
             #silence_logs="debug",
         )
         cluster.scale(jobs=100)
@@ -226,7 +208,8 @@ if __name__ == "__main__":
         
         #datasettag="Znunugamma"
         #datasettag="Wenu_BFilter"
-        #dataset = {datasettag: dataset[datasettag]}
+        #dataset = {datasettag: dataset[datasettag],
+        #          "Wenu_BFilter": dataset["Wenu_BFilter"]}
 
     else:
         cluster=LocalCluster()
@@ -266,7 +249,8 @@ if __name__ == "__main__":
     
     print("Beginning of dask.compute()")  
     start_time = time.time()
-    
+
+    # this is much faster than client.compute(out)
     (computed,) = dask.compute(out)
     
     end_time = time.time()
@@ -276,12 +260,11 @@ if __name__ == "__main__":
 
     # ---------------------------------------------------------------------------
     # Write ntuples out
-    for sample in list(computed.keys()):
-        print(len(computed[sample]["ntuple"]["ph_pt"]))
-              
+    keys=list(computed.keys())
+    for sample in keys:
         data = {}
         for var in list(computed[sample]["ntuple"].keys()):
-            data[var] = computed[sample]["ntuple"][var][0].to_numpy()
+            data[var] = computed[sample]["ntuple"][var].to_numpy()
         
         # Write to a ROOT file using uproot
         with uproot.recreate(f"output_{sample}.root") as f:
