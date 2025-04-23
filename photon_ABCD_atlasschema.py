@@ -154,19 +154,6 @@ class MyProcessor(processor.ProcessorABC):
             }
 
         # Extract some event-level data
-        output={}
-        output["ntuple"]={}
-        output["ntuple"]["ph_pt"]=SR_ph_presel_data.ph[indices].pt
-        output["ntuple"]["ph_eta"]=SR_ph_presel_data.ph[indices].eta
-        output["ntuple"]["ph_select_tightID"]=SR_ph_presel_data.ph[indices].select_tightID
-        output["ntuple"]["ph_isEM"]=SR_ph_presel_data.ph[indices].isEM
-        output["ntuple"]["ph_select_tightIso"]=SR_ph_presel_data.ph[indices].select_tightIso
-        if isMC:
-            output["ntuple"]["ph_truthType"]=SR_ph_presel_data.ph[indices].truthType
-            output["ntuple"]["ph_truthOrigin"]=SR_ph_presel_data.ph[indices].truthOrigin
-        output["ntuple"]["met_met"]=SR_ph_presel_data.met.met
-        output["ntuple"]["met_phi"]=SR_ph_presel_data.met.phi
-
         output["total"]= ak.num(events, axis=0)
         output["presel"] = ak.num(SR_presel_events,axis=0)
         output["SR"] = ak.num(SR_ph_presel_data,axis=0)
@@ -260,22 +247,6 @@ if __name__ == "__main__":
     end_time = time.time()
     print("Execution time: ", end_time - start_time)
     print("Finished dask.compute")
-    # ---------------------------------------------------------------------------
-
-    # ---------------------------------------------------------------------------
-    # Write ntuples out
-    keys=list(computed.keys())
-    for sample in keys:
-        data = {}
-        for var in list(computed[sample]["ntuple"].keys()):
-            data[var] = computed[sample]["ntuple"][var].to_numpy()
-        
-        # Write to a ROOT file using uproot
-        with uproot.recreate(f"output_{sample}.root") as f:
-            f["mytree"] = data  # uproot can write directly from Awkward arrays
-
-        # remove ntuple before serializing everything else
-        del computed[sample]["ntuple"]
     # ---------------------------------------------------------------------------
 
     # ---------------------------------------------------------------------------
