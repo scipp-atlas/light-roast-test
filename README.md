@@ -2,9 +2,39 @@
 
 Example scripts for running on the UChicago AF.
 
+## How to run these examples
+
 To run the eventloop example, use the `python 3.6` kernel.
 
-To run the columnar example, you'll need a more recent version of python.  In a Jupyter shell, set up a new kernel to use:
+To run the columnar example, you'll need a more recent version of python, and you probably want to work in a virtual environment.  Here are a few options for that:  
+
+### Using pip
+
+The simplest way to get a new environment up and running is with `pip`:
+
+```
+bash # in case you're not already in a bash shell
+new_env = "my_new_virtual_env"
+python -m venv ${new_env}
+source ${new_env}/bin/activate
+pip install ipykernel numpy dask_jobqueue parse
+python -m ipykernel install --user --name=${new_env}
+```
+
+Then restart your jupyter server and you should see the new kernel available for use.  To add a module later, just open a terminal in jupyter:
+
+```
+bash # in case you're not already in a bash shell
+new_env = "my_new_virtual_env"
+source ${new_env}/bin/activate
+pip install scikit-learn
+```
+
+No need to restart the jupyter kernel if you're just adding packages.
+
+
+### Using pixi
+In a Jupyter shell, set up a new kernel to use:
 
 ```
 curl -fsSL https://pixi.sh/install.sh | bash
@@ -29,7 +59,9 @@ pip install parse               # this should also work
 
 You may need to restart your Jupyter server (not just the kernel) again if you do that.
 
-If you prefer to use ALRB, you can try something like the following, but I don't find that it works for me:
+### Using ALRB
+
+If you prefer to use ALRB, you can try something like the following, but it hasn't worked smoothly in the past:
 
 ```
 export ATLAS_LOCAL_ROOT_BASE="/cvmfs/atlas.cern.ch/repo/ATLASLocalRootBase"
