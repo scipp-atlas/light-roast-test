@@ -1,78 +1,80 @@
 import ROOT as r
 import glob
 
+colors={"reco": r.kRed,
+        "tightID": r.kRed+1,
+        "mediumID": r.kRed-7,
+        "tightIso": r.kRed+2,
+        "looseIso": r.kRed+4,
+        "tightID_tightIso": r.kRed+3,
+        "tightID_looseIso": r.kRed-8,
+        "mediumID_tightIso": r.kRed-6,
+        "mediumID_looseIso": r.kRed-5,
+        }
+
+markers={"reco": 2,
+         "tightID": 3,
+         "mediumID": 29,
+         "tightIso": 5,
+         "looseIso": 33,
+         "tightID_tightIso": 4,
+         "tightID_looseIso": 28,
+         "mediumID_tightIso": 30,
+         "mediumID_looseIso": 32,
+        }
+
+def setStyles(objs):
+    for tag,obj in objs.items():
+        obj.SetLineColor(colors[tag])
+        obj.SetFillColor(0)
+        obj.SetMarkerColor(colors[tag])
+        obj.SetMarkerStyle(markers[tag])
+        obj.Write(f"eff_{tag}")
+
 def makeplots(f):
     rf = r.TFile(f,"RO")
     h={}
-    for t in ["truth", "reco", "tightID", "tightIso", "looseIso", "tightID_tightIso", "tightID_looseIso"]:
-        h[t] = rf.Get(f"photon_pt_{t}")
+    for t in ["truth", "reco",
+              "tightID", "tightIso",
+              "mediumID", "looseIso",
+              "tightID_tightIso", "tightID_looseIso",
+              "mediumID_tightIso", "mediumID_looseIso",
+              ]:
+        h[t] = rf.Get(f"ph_pt_{t}")
 
     ro = r.TFile(f"{f[:-5]}_effs.root","RECREATE")   
 
-    eff_reco   = r.TEfficiency(h["reco"],h["truth"])
-    eff_ID     = r.TEfficiency(h["tightID"],h["reco"])
-    eff_tIso    = r.TEfficiency(h["tightIso"],h["reco"])
-    eff_lIso    = r.TEfficiency(h["looseIso"],h["reco"])
-    eff_IDtIso  = r.TEfficiency(h["tightID_tightIso"],h["reco"])
-    eff_IDlIso  = r.TEfficiency(h["tightID_looseIso"],h["reco"])
-    eff_recoID     = r.TEfficiency(h["tightID"],h["truth"])
-    eff_recotIso    = r.TEfficiency(h["tightIso"],h["truth"])
-    eff_recolIso    = r.TEfficiency(h["looseIso"],h["truth"])
-    eff_recoIDtIso  = r.TEfficiency(h["tightID_tightIso"],h["truth"])
-    eff_recoIDlIso  = r.TEfficiency(h["tightID_looseIso"],h["truth"])
+    effs={}
+    effs["reco"] = r.TEfficiency(h["reco"],h["truth"])
+    for Iso in ["looseIso", "tightIso"]:
+        effs[Iso] = r.TEfficiency(h[Iso],h["truth"])
 
-    eff_reco.SetLineColor(r.kRed)
-    eff_recoID.SetLineColor(r.kRed+1)
-    eff_recotIso.SetLineColor(r.kRed+2)
-    eff_recolIso.SetLineColor(r.kRed+4)
-    eff_recoIDtIso.SetLineColor(r.kRed+3)
-    eff_recoIDlIso.SetLineColor(r.kRed-8)
-    eff_reco.SetMarkerColor(r.kRed)
-    eff_recoID.SetMarkerColor(r.kRed+1)
-    eff_recotIso.SetMarkerColor(r.kRed+2)
-    eff_recolIso.SetMarkerColor(r.kRed+4)
-    eff_recoIDtIso.SetMarkerColor(r.kRed+3)
-    eff_recoIDlIso.SetMarkerColor(r.kRed-8)
-    eff_reco.SetFillColor(0)
-    eff_recoID.SetFillColor(0)
-    eff_recotIso.SetFillColor(0)
-    eff_recolIso.SetFillColor(0)
-    eff_recoIDtIso.SetFillColor(0)
-    eff_recoIDlIso.SetFillColor(0)
-    eff_reco.SetMarkerStyle(2)
-    eff_recoID.SetMarkerStyle(3)
-    eff_recotIso.SetMarkerStyle(5)
-    eff_recolIso.SetMarkerStyle(27)
-    eff_recoIDtIso.SetMarkerStyle(4)
-    eff_recoIDlIso.SetMarkerStyle(28)
-    
-    eff_reco.Write("eff_reco_truth")
-    eff_ID.Write("eff_ID_reco")
-    eff_tIso.Write("eff_tIso_reco")
-    eff_lIso.Write("eff_lIso_reco")
-    eff_IDtIso.Write("eff_IDtIso_reco")
-    eff_IDlIso.Write("eff_IDlIso_reco")
-    eff_recoID.Write("eff_recoID_truth")
-    eff_recotIso.Write("eff_recotIso_truth")
-    eff_recolIso.Write("eff_recolIso_truth")
-    eff_recoIDtIso.Write("eff_recoIDtIso_truth")
-    eff_recoIDlIso.Write("eff_recoIDlIso_truth")
+    for ID in ["mediumID", "tightID"]:
+        effs[ID] = r.TEfficiency(h[ID],h["truth"])
 
-    eff_reco.SetTitle(";True p_{T}^{#gamma} [GeV];Efficiency")
+        for Iso in ["looseIso", "tightIso"]:
+            effs[ID+"_"+Iso] = r.TEfficiency(h[ID+"_"+Iso],h["truth"])
+
+    setStyles(effs)
     
-    c=r.TCanvas("effs","effs",800,600)
+    effs["reco"].SetTitle(";True p_{T}^{#gamma} [GeV];Efficiency")
+    
+    c=r.TCanvas("effics","effics",800,600)
     c.SetGridy(1)
     c.SetLeftMargin(0.15)
     c.SetBottomMargin(0.15)
-    eff_reco.Draw()
-    eff_recoIDtIso.Draw("same")
-    eff_recoIDlIso.Draw("same")
-    eff_recoID.Draw("same")
-    eff_recotIso.Draw("same")
-    eff_recolIso.Draw("same")
+    effs["reco"]            .Draw()
+    leg=r.TLegend(0.3,0.2,0.85,0.5)
+    leg.AddEntry(effs["reco"], "looseID")
+    for tag,obj in effs.items():
+        if tag=="reco": continue
+        if "_" not in tag: continue
+        obj.Draw("same")
+        leg.AddEntry(obj, f"looseID+{tag.replace('_','+')}")
+    leg.Draw()
     c.Update()
     
-    axishist=eff_reco.GetPaintedGraph().GetHistogram()
+    axishist=effs["reco"].GetPaintedGraph().GetHistogram()
     axishist.GetYaxis().SetTitle("Efficiency")
     axishist.GetYaxis().SetRangeUser(0,1)
     axishist.GetYaxis().SetLabelSize(0.05)
@@ -84,14 +86,6 @@ def makeplots(f):
     c.Update()
     r.gPad.Update()
 
-    leg=r.TLegend(0.3,0.2,0.85,0.5)
-    leg.AddEntry(eff_reco, "looseID")
-    leg.AddEntry(eff_recoID, "looseID+tightID")
-    leg.AddEntry(eff_recotIso, "looseID+tightIso")
-    leg.AddEntry(eff_recolIso, "looseID+looseIso")
-    leg.AddEntry(eff_recoIDtIso, "looseID+tightID+tightIso")
-    leg.AddEntry(eff_recoIDlIso, "looseID+tightID+looseIso")
-    leg.Draw()
 
     tl=r.TLatex()
     tl.SetNDC()
@@ -103,23 +97,24 @@ def makeplots(f):
 
 
     # pt plot
-    c2=r.TCanvas("pt","pt",800,600)
-    c2.SetLogy(1)
-    
-    #for t in ["truth", "reco", "tightID", "tightIso", "looseIso", "tightID_tightIso", "tightID_looseIso"]:
-    h["truth"].SetLineColor(r.kBlue)
-    h["truth"].Draw()
-    h["reco"].SetLineColor(r.kRed)
-    h["reco"].Draw("same")
-    h["tightID"].SetLineColor(r.kRed+1)
-    h["tightID"].Draw("same")
-    h["tightIso"].SetLineColor(r.kRed+2)
-    h["tightIso"].Draw("same")
-    h["tightID_tightIso"].SetLineColor(r.kRed+3)
-    h["tightID_tightIso"].Draw("same")
-    
-    c2.Print(f"{f[:-5]}_pt.pdf")
-    c2.Write()
+    if False:
+        c2=r.TCanvas("pt","pt",800,600)
+        c2.SetLogy(1)
+        
+        #for t in ["truth", "reco", "tightID", "tightIso", "looseIso", "tightID_tightIso", "tightID_looseIso"]:
+        h["truth"].SetLineColor(r.kBlue)
+        h["truth"].Draw()
+        h["reco"].SetLineColor(r.kRed)
+        h["reco"].Draw("same")
+        h["tightID"].SetLineColor(r.kRed+1)
+        h["tightID"].Draw("same")
+        h["tightIso"].SetLineColor(r.kRed+2)
+        h["tightIso"].Draw("same")
+        h["tightID_tightIso"].SetLineColor(r.kRed+3)
+        h["tightID_tightIso"].Draw("same")
+        
+        c2.Print(f"{f[:-5]}_pt.pdf")
+        c2.Write()
     
     ro.Close()
     rf.Close()

@@ -12,33 +12,74 @@ def processfile(filetag):
     
     output = r.TFile(f"efficoutputs/{filetag}.root","RECREATE")
 
-    photon_pt_truth = r.TH1F("photon_pt_truth", "photon_pT;true #gamma p_{T} [GeV]; Entries/(5 GeV)", 20, 0, 100)
-    photon_pt_reco = r.TH1F("photon_pt_reco", "photon_pT;truth #gamma p_{T} [GeV]; Entries/(5 GeV)", 20, 0, 100)
-    photon_pt_tightID = r.TH1F("photon_pt_tightID", "photon_pT;true #gamma p_{T} [GeV]; Entries/(5 GeV)", 20, 0, 100)
-    photon_pt_tightIso = r.TH1F("photon_pt_tightIso", "photon_pT;true #gamma p_{T} [GeV]; Entries/(5 GeV)", 20, 0, 100)
-    photon_pt_looseIso = r.TH1F("photon_pt_looseIso", "photon_pT;true #gamma p_{T} [GeV]; Entries/(5 GeV)", 20, 0, 100)
-    photon_pt_tightID_tightIso = r.TH1F("photon_pt_tightID_tightIso", "photon_pT;true #gamma p_{T} [GeV]; Entries/(5 GeV)", 20, 0, 100)
-    photon_pt_tightID_looseIso = r.TH1F("photon_pt_tightID_looseIso", "photon_pT;true #gamma p_{T} [GeV]; Entries/(5 GeV)", 20, 0, 100)
+    # 1D plots of pT
+    ph_pt_truth = r.TH1F("ph_pt_truth", "ph_pT;true #gamma p_{T} [GeV]; Entries/(5 GeV)", 20, 0, 100)
+    ph_pt_reco = r.TH1F("ph_pt_reco", "ph_pT;truth #gamma p_{T} [GeV]; Entries/(5 GeV)", 20, 0, 100)
 
-    photon_topoetcone40_tightID = r.TH1F("ph_topoetcone40_tightID","ph_topoetcone40_tightID;(topoetcone40-2.45 GeV)/p_{T}^{#gamma}; Entries/0.05", 200, -0.5, 1.5)
-    photon_ptcone20_tightID = r.TH1F("ph_ptcone20_tightID","ph_ptcone20_tightID;(ptcone20)/p_{T}^{#gamma}; Entries/0.01", 100, 0.0, 1.0)
+    ph_pt_tightID = r.TH1F("ph_pt_tightID", "ph_pT;true #gamma p_{T} [GeV]; Entries/(5 GeV)", 20, 0, 100)
+    ph_pt_mediumID = r.TH1F("ph_pt_mediumID", "ph_pT;true #gamma p_{T} [GeV]; Entries/(5 GeV)", 20, 0, 100)
 
-    photon_topoetcone40_pt_tightID = r.TH2F("ph_topoetcone40_pt_tightID",
+    ph_pt_tightIso = r.TH1F("ph_pt_tightIso", "ph_pT;true #gamma p_{T} [GeV]; Entries/(5 GeV)", 20, 0, 100)
+    ph_pt_looseIso = r.TH1F("ph_pt_looseIso", "ph_pT;true #gamma p_{T} [GeV]; Entries/(5 GeV)", 20, 0, 100)
+
+    ph_pt_tightID_tightIso = r.TH1F("ph_pt_tightID_tightIso", "ph_pT;true #gamma p_{T} [GeV]; Entries/(5 GeV)", 20, 0, 100)
+    ph_pt_tightID_looseIso = r.TH1F("ph_pt_tightID_looseIso", "ph_pT;true #gamma p_{T} [GeV]; Entries/(5 GeV)", 20, 0, 100)
+
+    ph_pt_mediumID_tightIso = r.TH1F("ph_pt_mediumID_tightIso", "ph_pT;true #gamma p_{T} [GeV]; Entries/(5 GeV)", 20, 0, 100)
+    ph_pt_mediumID_looseIso = r.TH1F("ph_pt_mediumID_looseIso", "ph_pT;true #gamma p_{T} [GeV]; Entries/(5 GeV)", 20, 0, 100)
+
+    # 1D plots of isolation after medium or tight ID
+    ph_topoetcone40_tightID = r.TH1F("ph_topoetcone40_tightID","ph_topoetcone40_tightID;(topoetcone40-2.45 GeV)/p_{T}^{#gamma}; Entries/0.05", 200, -0.5, 1.5)
+    ph_ptcone20_tightID = r.TH1F("ph_ptcone20_tightID","ph_ptcone20_tightID;(ptcone20)/p_{T}^{#gamma}; Entries/0.01", 100, 0.0, 1.0)
+
+    ph_topoetcone40_mediumID = r.TH1F("ph_topoetcone40_mediumID","ph_topoetcone40_mediumID;(topoetcone40-2.45 GeV)/p_{T}^{#gamma}; Entries/0.05", 200, -0.5, 1.5)
+    ph_ptcone20_mediumID = r.TH1F("ph_ptcone20_mediumID","ph_ptcone20_mediumID;(ptcone20)/p_{T}^{#gamma}; Entries/0.01", 100, 0.0, 1.0)
+
+
+    # 2D plots
+    ph_topoetcone40_pt_tightID = r.TH2F("ph_topoetcone40_pt_tightID",
                                             "ph_topoetcone40_pt_tightID;p_{T}^{#gamma} [GeV];(topoetcone40-2.45 GeV)/p_{T}^{#gamma}",
                                             10, 0, 100,
                                             20, -0.5, 1.5)
     
-    photon_topoetcone20_pt_tightID = r.TH2F("ph_topoetcone20_pt_tightID",
+    ph_topoetcone20_pt_tightID = r.TH2F("ph_topoetcone20_pt_tightID",
                                             "ph_topoetcone20_pt_tightID;p_{T}^{#gamma} [GeV];(topoetcone20)/p_{T}^{#gamma}",
                                             10, 0, 100,
                                             20, -0.25, 0.75)
     
-    photon_pt_truth.Sumw2()
-    photon_pt_reco.Sumw2()
-    photon_pt_tightID.Sumw2()
-    photon_pt_tightIso.Sumw2()
-    photon_pt_tightID_tightIso.Sumw2()
+    ph_topoetcone40_pt_mediumID = r.TH2F("ph_topoetcone40_pt_mediumID",
+                                            "ph_topoetcone40_pt_mediumID;p_{T}^{#gamma} [GeV];(topoetcone40-2.45 GeV)/p_{T}^{#gamma}",
+                                            10, 0, 100,
+                                            20, -0.5, 1.5)
     
+    ph_topoetcone20_pt_mediumID = r.TH2F("ph_topoetcone20_pt_mediumID",
+                                            "ph_topoetcone20_pt_mediumID;p_{T}^{#gamma} [GeV];(topoetcone20)/p_{T}^{#gamma}",
+                                            10, 0, 100,
+                                            20, -0.25, 0.75)
+    
+    hists=[ph_pt_truth,
+           ph_pt_reco,
+           ph_pt_tightID,
+           ph_pt_mediumID,
+           ph_pt_tightIso,
+           ph_pt_tightID_tightIso,
+           ph_pt_mediumID_tightIso,
+           ph_pt_looseIso,
+           ph_pt_tightID_looseIso,
+           ph_pt_mediumID_looseIso,
+           ph_topoetcone40_tightID,
+           ph_ptcone20_tightID,
+           ph_topoetcone40_pt_tightID,
+           ph_topoetcone20_pt_tightID,
+           ph_topoetcone40_mediumID,
+           ph_ptcone20_mediumID,
+           ph_topoetcone40_pt_mediumID,
+           ph_topoetcone20_pt_mediumID,
+           ]
+
+    for i in hists:
+        i.Sumw2()
+
     eventcount=0
     totalevents=t.GetEntriesFast()
     for e in t:
@@ -59,7 +100,7 @@ def processfile(filetag):
             
             # isolation? overlap?
 
-            photon_pt_truth.Fill(e.truthph_pt[i]/1000.)
+            ph_pt_truth.Fill(e.truthph_pt[i]/1000.)
             truthph_index=i
             truthph_tlv=r.TLorentzVector()
             truthph_tlv.SetPtEtaPhiM(e.truthph_pt[i],e.truthph_eta[i],e.truthph_phi[i],0)
@@ -75,42 +116,59 @@ def processfile(filetag):
             ph_tlv.SetPtEtaPhiM(e.ph_truthpt[i],e.ph_trutheta[i],e.ph_truthphi[i],0)
             if ph_tlv.DeltaR(truthph_tlv)>0.02: continue
 
-            pt=e.ph_truthpt[i]/1000.
-            sf_id = e.ph_id_effSF_tightID_NOSYS[i]
-            sf_iso = e.ph_id_effSF_tightIso_NOSYS[i]
-            
-            photon_pt_reco.Fill(pt)
+            truthpt=e.ph_truthpt[i]
+            recopt=e.ph_pt_NOSYS[i]
 
-            if ord(e.ph_select_tightID_NOSYS[i])>0:
-                photon_pt_tightID.Fill(pt, sf_id)
-                photon_topoetcone40_tightID.Fill((e.ph_topoetcone40_NOSYS[i]-2450.)/e.ph_pt_NOSYS[i], sf_id)
-                photon_ptcone20_tightID.Fill(e.ph_ptcone20_NOSYS[i]/e.ph_pt_NOSYS[i], sf_id)
-                photon_topoetcone40_pt_tightID.Fill(e.ph_pt_NOSYS[i]/1000.,(e.ph_topoetcone40_NOSYS[i]-2450.)/e.ph_pt_NOSYS[i],sf_id)
-                photon_topoetcone20_pt_tightID.Fill(e.ph_pt_NOSYS[i]/1000.,(e.ph_topoetcone20_NOSYS[i])/e.ph_pt_NOSYS[i],sf_id)
-            if ord(e.ph_select_tightIso_NOSYS[i])>0:
-                photon_pt_tightIso.Fill(pt, sf_iso)
-            if ord(e.ph_select_looseIso_NOSYS[i])>0:
-                photon_pt_looseIso.Fill(pt, e.ph_id_effSF_looseIso_NOSYS[i])
-            if ord(e.ph_select_tightID_NOSYS[i])>0 and ord(e.ph_select_tightIso_NOSYS[i])>0:
-                photon_pt_tightID_tightIso.Fill(pt, sf_id*sf_iso)
-            if ord(e.ph_select_tightID_NOSYS[i])>0 and ord(e.ph_select_looseIso_NOSYS[i])>0:
-                photon_pt_tightID_looseIso.Fill(pt, sf_id*e.ph_id_effSF_looseIso_NOSYS[i])
+            topoetcone20 = e.ph_topoetcone20_NOSYS[i]
+            topoetcone40 = e.ph_topoetcone40_NOSYS[i]
+            ptcone20     = e.ph_ptcone20_NOSYS[i]
+            
+            sf_tightID  = e.ph_id_effSF_tightID_NOSYS[i]
+            sf_tightIso = e.ph_id_effSF_tightIso_NOSYS[i]
+            sf_mediumID = e.ph_id_effSF_mediumID_NOSYS[i]
+            sf_looseIso = e.ph_id_effSF_looseIso_NOSYS[i]
+
+            tightID  = (ord(e.ph_select_tightID_NOSYS[i] ) > 0)
+            tightIso = (ord(e.ph_select_tightIso_NOSYS[i]) > 0)
+            mediumID = (ord(e.ph_select_mediumID_NOSYS[i]) > 0)
+            looseIso = (ord(e.ph_select_looseIso_NOSYS[i]) > 0)
+            
+            ph_pt_reco.Fill(truthpt/1000.)
+
+            if tightID:
+                ph_pt_tightID               .Fill(truthpt/1000.                             , sf_tightID)
+                ph_topoetcone40_tightID     .Fill((topoetcone40-2450.)/recopt               , sf_tightID)
+                ph_ptcone20_tightID         .Fill(ptcone20/recopt                           , sf_tightID)
+                ph_topoetcone40_pt_tightID  .Fill(truthpt/1000.,(topoetcone40-2450.)/recopt , sf_tightID)
+                ph_topoetcone20_pt_tightID  .Fill(truthpt/1000.,topoetcone20/recopt         , sf_tightID)
+                
+            if mediumID:
+                ph_pt_mediumID              .Fill(truthpt/1000.                             , sf_mediumID)
+                ph_topoetcone40_mediumID    .Fill((topoetcone40-2450.)/recopt               , sf_mediumID)
+                ph_ptcone20_mediumID        .Fill(ptcone20/recopt                           , sf_mediumID)
+                ph_topoetcone40_pt_mediumID .Fill(truthpt/1000.,(topoetcone40-2450.)/recopt , sf_mediumID)
+                ph_topoetcone20_pt_mediumID .Fill(truthpt/1000.,topoetcone20/recopt         , sf_mediumID)
+                
+            if tightIso:
+                ph_pt_tightIso              .Fill(truthpt/1000., sf_tightIso)
+                
+            if looseIso:
+                ph_pt_looseIso              .Fill(truthpt/1000., sf_looseIso)
+                
+            if tightID and tightIso:
+                ph_pt_tightID_tightIso      .Fill(truthpt/1000., sf_tightID*sf_tightIso)
+                
+            if tightID and looseIso:
+                ph_pt_tightID_looseIso      .Fill(truthpt/1000., sf_tightID*sf_looseIso)
+            
+            if mediumID and tightIso:
+                ph_pt_mediumID_tightIso     .Fill(truthpt/1000., sf_mediumID*sf_tightIso)
+                
+            if mediumID and looseIso:
+                ph_pt_mediumID_looseIso     .Fill(truthpt/1000., sf_mediumID*sf_looseIso)
             
             break
-            # overlap removal?
 
-    hists=[photon_pt_truth,
-           photon_pt_reco,
-           photon_pt_tightID,
-           photon_pt_tightIso,
-           photon_pt_tightID_tightIso,
-           photon_pt_looseIso,
-           photon_pt_tightID_looseIso,
-           photon_topoetcone40_tightID,
-           photon_ptcone20_tightID,
-           photon_topoetcone40_pt_tightID,
-           photon_topoetcone20_pt_tightID,
-           ]
 
     for i in hists:
         i.Write()
