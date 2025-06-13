@@ -68,7 +68,7 @@ def makeplots(f):
     leg.AddEntry(effs["reco"], "looseID")
     for tag,obj in effs.items():
         if tag=="reco": continue
-        if "_" not in tag: continue
+        #if "_" not in tag: continue
         obj.Draw("same")
         leg.AddEntry(obj, f"looseID+{tag.replace('_','+')}")
     leg.Draw()
