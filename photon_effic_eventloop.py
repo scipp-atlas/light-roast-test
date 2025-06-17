@@ -5,7 +5,7 @@ import glob
 import os
 
 def processfile(filetag):
-    filename=glob.glob(f"/data/mhance/SUSY/ntuples/v3_3/user.bhodkins.RadiativeDecays.{filetag}.v3.3__NOFILTER_ANALYSIS.root/user.bhodkins.*.ANALYSIS.root")
+    filename=glob.glob(f"/data/mhance/SUSY/ntuples/v3_6/user.bhodkins.RadiativeDecays.{filetag}.v3.*__NOFILTER_ANALYSIS.root/user.bhodkins.*.ANALYSIS.root")
     
     f=r.TFile(filename[0],"RO")
     t=f.Get("analysis")
@@ -15,6 +15,7 @@ def processfile(filetag):
     # 1D plots of pT
     ph_pt_truth = r.TH1F("ph_pt_truth", "ph_pT;true #gamma p_{T} [GeV]; Entries/(5 GeV)", 20, 0, 100)
     ph_pt_reco = r.TH1F("ph_pt_reco", "ph_pT;truth #gamma p_{T} [GeV]; Entries/(5 GeV)", 20, 0, 100)
+    ph_pt_baseline = r.TH1F("ph_pt_baseline", "ph_pT;truth #gamma p_{T} [GeV]; Entries/(5 GeV)", 20, 0, 100)
 
     ph_pt_tightID = r.TH1F("ph_pt_tightID", "ph_pT;true #gamma p_{T} [GeV]; Entries/(5 GeV)", 20, 0, 100)
     ph_pt_mediumID = r.TH1F("ph_pt_mediumID", "ph_pT;true #gamma p_{T} [GeV]; Entries/(5 GeV)", 20, 0, 100)
@@ -59,6 +60,7 @@ def processfile(filetag):
     
     hists=[ph_pt_truth,
            ph_pt_reco,
+           ph_pt_baseline,
            ph_pt_tightID,
            ph_pt_mediumID,
            ph_pt_tightIso,
@@ -108,21 +110,31 @@ def processfile(filetag):
 
         if truthph_tlv is None:
             continue
-        
+
+        i_baseline=0
         for i in range(len(e.ph_pt_NOSYS)):
             if e.ph_pt_NOSYS[i]<7000:
                 continue
+            if abs(e.ph_eta[i])>2.37 or (abs(e.ph_eta[i])>1.37 and abs(e.ph_eta[i])<1.52):
+                continue
+
             ph_tlv = r.TLorentzVector()
             ph_tlv.SetPtEtaPhiM(e.ph_truthpt[i],e.ph_trutheta[i],e.ph_truthphi[i],0)
-            if ph_tlv.DeltaR(truthph_tlv)>0.02: continue
+            if ph_tlv.DeltaR(truthph_tlv)>0.02:
+                continue
 
             truthpt=e.ph_truthpt[i]
             recopt=e.ph_pt_NOSYS[i]
 
-            topoetcone20 = e.ph_topoetcone20_NOSYS[i]
-            topoetcone40 = e.ph_topoetcone40_NOSYS[i]
-            ptcone20     = e.ph_ptcone20_NOSYS[i]
+            ph_pt_reco.Fill(truthpt/1000.)
+
+            if not (ord(e.ph_select_baseline_NOSYS[i])>0):
+                continue
+
+            #print(e.eventNumber)
+            #print(i)
             
+            sf_baseline = e.ph_id_effSF_baseline_NOSYS[i]
             sf_tightID  = e.ph_id_effSF_tightID_NOSYS[i]
             sf_tightIso = e.ph_id_effSF_tightIso_NOSYS[i]
             sf_mediumID = e.ph_id_effSF_mediumID_NOSYS[i]
@@ -132,8 +144,12 @@ def processfile(filetag):
             tightIso = (ord(e.ph_select_tightIso_NOSYS[i]) > 0)
             mediumID = (ord(e.ph_select_mediumID_NOSYS[i]) > 0)
             looseIso = (ord(e.ph_select_looseIso_NOSYS[i]) > 0)
+
+            topoetcone20 = e.ph_topoetcone20_NOSYS[i_baseline]
+            topoetcone40 = e.ph_topoetcone40_NOSYS[i_baseline]
+            ptcone20     = e.ph_ptcone20_NOSYS[i_baseline]
             
-            ph_pt_reco.Fill(truthpt/1000.)
+            ph_pt_baseline.Fill(truthpt/1000., sf_baseline)
 
             if tightID:
                 ph_pt_tightID               .Fill(truthpt/1000.                             , sf_tightID)
@@ -166,7 +182,8 @@ def processfile(filetag):
                 
             if mediumID and looseIso:
                 ph_pt_mediumID_looseIso     .Fill(truthpt/1000., sf_mediumID*sf_looseIso)
-            
+
+            i_baseline+=1
             break
 
 
@@ -179,11 +196,11 @@ def processfile(filetag):
 
 #tag="545767.N2_200_N1_190_WB.mc20d"
 
-ntupledirs=glob.glob("/data/mhance/SUSY/ntuples/v3_3/user.bhodkins.RadiativeDecays.*.v3.3__NOFILTER_ANALYSIS.root")
+ntupledirs=glob.glob("/data/mhance/SUSY/ntuples/v3_6/user.bhodkins.RadiativeDecays.*.v3.*__NOFILTER_ANALYSIS.root")
 
 dsids=[]
 for i in ntupledirs:
-    tag=i.replace("/data/mhance/SUSY/ntuples/v3_3/user.bhodkins.RadiativeDecays.","").replace(".v3.3__NOFILTER_ANALYSIS.root","")
+    tag=i.replace("/data/mhance/SUSY/ntuples/v3_6/user.bhodkins.RadiativeDecays.","").replace(".v3.3","").replace(".v3.6","").replace("__NOFILTER_ANALYSIS.root","")
     print(tag)
     dsid=tag.split(".")[0]
     physicsshort=tag.split(".")[1]

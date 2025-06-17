@@ -1,7 +1,8 @@
 import ROOT as r
 import glob
 
-colors={"reco": r.kRed,
+colors={"reco": r.kBlack,
+        "baseline": r.kRed,
         "tightID": r.kRed+1,
         "mediumID": r.kRed-7,
         "tightIso": r.kRed+2,
@@ -12,7 +13,8 @@ colors={"reco": r.kRed,
         "mediumID_looseIso": r.kRed-5,
         }
 
-markers={"reco": 2,
+markers={"reco": 8,
+         "baseline": 2,
          "tightID": 3,
          "mediumID": 29,
          "tightIso": 5,
@@ -34,7 +36,7 @@ def setStyles(objs):
 def makeplots(f):
     rf = r.TFile(f,"RO")
     h={}
-    for t in ["truth", "reco",
+    for t in ["truth", "reco", "baseline",
               "tightID", "tightIso",
               "mediumID", "looseIso",
               "tightID_tightIso", "tightID_looseIso",
@@ -46,6 +48,7 @@ def makeplots(f):
 
     effs={}
     effs["reco"] = r.TEfficiency(h["reco"],h["truth"])
+    effs["baseline"] = r.TEfficiency(h["baseline"],h["truth"])
     for Iso in ["looseIso", "tightIso"]:
         effs[Iso] = r.TEfficiency(h[Iso],h["truth"])
 
@@ -57,20 +60,24 @@ def makeplots(f):
 
     setStyles(effs)
     
-    effs["reco"].SetTitle(";True p_{T}^{#gamma} [GeV];Efficiency")
+    effs["baseline"].SetTitle(";True p_{T}^{#gamma} [GeV];Efficiency")
     
     c=r.TCanvas("effics","effics",800,600)
     c.SetGridy(1)
     c.SetLeftMargin(0.15)
     c.SetBottomMargin(0.15)
-    effs["reco"]            .Draw()
+    effs["reco"].Draw()
     leg=r.TLegend(0.3,0.2,0.85,0.5)
-    leg.AddEntry(effs["reco"], "looseID")
+    leg.AddEntry(effs["reco"], "reco")
     for tag,obj in effs.items():
         if tag=="reco": continue
         #if "_" not in tag: continue
         obj.Draw("same")
-        leg.AddEntry(obj, f"looseID+{tag.replace('_','+')}")
+        if tag == "baseline":
+            leg.AddEntry(obj, "baseline")
+        else:
+            leg.AddEntry(obj, f"baseline+{tag.replace('_','+')}")
+            
     leg.Draw()
     c.Update()
     
@@ -101,11 +108,11 @@ def makeplots(f):
         c2=r.TCanvas("pt","pt",800,600)
         c2.SetLogy(1)
         
-        #for t in ["truth", "reco", "tightID", "tightIso", "looseIso", "tightID_tightIso", "tightID_looseIso"]:
+        #for t in ["truth", "baseline", "tightID", "tightIso", "looseIso", "tightID_tightIso", "tightID_looseIso"]:
         h["truth"].SetLineColor(r.kBlue)
         h["truth"].Draw()
-        h["reco"].SetLineColor(r.kRed)
-        h["reco"].Draw("same")
+        h["baseline"].SetLineColor(r.kRed)
+        h["baseline"].Draw("same")
         h["tightID"].SetLineColor(r.kRed+1)
         h["tightID"].Draw("same")
         h["tightIso"].SetLineColor(r.kRed+2)
