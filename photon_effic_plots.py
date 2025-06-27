@@ -7,6 +7,9 @@ colors={"reco": r.kBlack,
         "mediumID": r.kRed-7,
         "tightIso": r.kRed+2,
         "looseIso": r.kRed+4,
+        "tightCOIso": r.kOrange,
+        "hybridIso": r.kOrange+1,
+        "hybridCOIso": r.kOrange+2,
         "tightID_tightIso": r.kRed+3,
         "tightID_looseIso": r.kRed-8,
         "mediumID_tightIso": r.kRed-6,
@@ -21,7 +24,10 @@ markers={"reco": 8,
          "tightID": 3,
          "mediumID": 29,
          "tightIso": 5,
+         "tightCOIso": 36,
          "looseIso": 33,
+         "hybridIso": 37,
+         "hybridCOIso": 38,
          "tightID_tightIso": 4,
          "tightID_looseIso": 28,
          "mediumID_tightIso": 30,
@@ -53,7 +59,10 @@ def makeplots(f,denom="truth",isoOnly=False):
     
     iso_plots=[
         "looseIso",
-        "tightIso"
+        "tightIso",
+        "tightCOIso",
+        "hybridIso",
+        "hybridCOIso"
     ]
 
     ID_plots=[
@@ -91,7 +100,7 @@ def makeplots(f,denom="truth",isoOnly=False):
     h_denom=h[denom]
     
     effs={}
-    if "truth_SUSY_fiducial" in h:
+    if "truth_SUSY_fiducial" in h and not isoOnly:
         effs["truth_SUSY_fiducial"] = r.TEfficiency(h["truth_SUSY_fiducial"], h_denom)
     if "truth" in h:
         effs["truth"] = r.TEfficiency(h["truth"], h_denom)
@@ -100,7 +109,7 @@ def makeplots(f,denom="truth",isoOnly=False):
     if "baseline" in h:
         effs["baseline"] = r.TEfficiency(h["baseline"],h_denom)
         
-    for Iso in ["looseIso", "tightIso"]:
+    for Iso in iso_plots:
         if Iso not in h: continue
         effs[Iso] = r.TEfficiency(h[Iso],h_denom)
 
@@ -108,7 +117,7 @@ def makeplots(f,denom="truth",isoOnly=False):
         if ID not in h: continue
         effs[ID] = r.TEfficiency(h[ID],h_denom)
 
-        for Iso in ["looseIso", "tightIso"]:
+        for Iso in iso_plots:
             if ID+"_"+Iso not in effs: continue
             effs[ID+"_"+Iso] = r.TEfficiency(h[ID+"_"+Iso],h_denom)
 
@@ -196,6 +205,6 @@ gridpoints=glob.glob("efficoutputs/*WB.root")
 
 for f in gridpoints:
     print(f)
-    #makeplots(f,"baseline",True)
-    #makeplots(f,"truth",False)
+    makeplots(f,"baseline",True)
+    makeplots(f,"truth",False)
     makeplots(f,"truth_SUSY_all",False)

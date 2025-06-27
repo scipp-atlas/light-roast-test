@@ -24,12 +24,21 @@ def processfile(filetag):
 
     ph_pt_tightIso = r.TH1F("ph_pt_tightIso", "ph_pT;true #gamma p_{T} [GeV]; Entries/(5 GeV)", 20, 0, 100)
     ph_pt_looseIso = r.TH1F("ph_pt_looseIso", "ph_pT;true #gamma p_{T} [GeV]; Entries/(5 GeV)", 20, 0, 100)
+    ph_pt_hybridIso = r.TH1F("ph_pt_hybridIso", "ph_pT;true #gamma p_{T} [GeV]; Entries/(5 GeV)", 20, 0, 100)
+    ph_pt_tightCOIso = r.TH1F("ph_pt_tightCOIso", "ph_pT;true #gamma p_{T} [GeV]; Entries/(5 GeV)", 20, 0, 100)
+    ph_pt_hybridCOIso = r.TH1F("ph_pt_hybridCOIso", "ph_pT;true #gamma p_{T} [GeV]; Entries/(5 GeV)", 20, 0, 100)
 
     ph_pt_tightID_tightIso = r.TH1F("ph_pt_tightID_tightIso", "ph_pT;true #gamma p_{T} [GeV]; Entries/(5 GeV)", 20, 0, 100)
     ph_pt_tightID_looseIso = r.TH1F("ph_pt_tightID_looseIso", "ph_pT;true #gamma p_{T} [GeV]; Entries/(5 GeV)", 20, 0, 100)
+    ph_pt_tightID_hybridIso = r.TH1F("ph_pt_tightID_hybridIso", "ph_pT;true #gamma p_{T} [GeV]; Entries/(5 GeV)", 20, 0, 100)
+    ph_pt_tightID_tightCOIso = r.TH1F("ph_pt_tightID_tightCOIso", "ph_pT;true #gamma p_{T} [GeV]; Entries/(5 GeV)", 20, 0, 100)
+    ph_pt_tightID_hybridCOIso = r.TH1F("ph_pt_tightID_hybridCOIso", "ph_pT;true #gamma p_{T} [GeV]; Entries/(5 GeV)", 20, 0, 100)
 
     ph_pt_mediumID_tightIso = r.TH1F("ph_pt_mediumID_tightIso", "ph_pT;true #gamma p_{T} [GeV]; Entries/(5 GeV)", 20, 0, 100)
     ph_pt_mediumID_looseIso = r.TH1F("ph_pt_mediumID_looseIso", "ph_pT;true #gamma p_{T} [GeV]; Entries/(5 GeV)", 20, 0, 100)
+    ph_pt_mediumID_hybridIso = r.TH1F("ph_pt_mediumID_hybridIso", "ph_pT;true #gamma p_{T} [GeV]; Entries/(5 GeV)", 20, 0, 100)
+    ph_pt_mediumID_tightCOIso = r.TH1F("ph_pt_mediumID_tightCOIso", "ph_pT;true #gamma p_{T} [GeV]; Entries/(5 GeV)", 20, 0, 100)
+    ph_pt_mediumID_hybridCOIso = r.TH1F("ph_pt_mediumID_hybridCOIso", "ph_pT;true #gamma p_{T} [GeV]; Entries/(5 GeV)", 20, 0, 100)
 
     # 1D plots of isolation after medium or tight ID
     ph_topoetcone40_tightID = r.TH1F("ph_topoetcone40_tightID","ph_topoetcone40_tightID;(topoetcone40-2.45 GeV)/p_{T}^{#gamma}; Entries/0.05", 200, -0.5, 1.5)
@@ -70,9 +79,18 @@ def processfile(filetag):
            ph_pt_tightIso,
            ph_pt_tightID_tightIso,
            ph_pt_mediumID_tightIso,
+           ph_pt_tightCOIso,
+           ph_pt_tightID_tightCOIso,
+           ph_pt_mediumID_tightCOIso,
            ph_pt_looseIso,
            ph_pt_tightID_looseIso,
            ph_pt_mediumID_looseIso,
+           ph_pt_hybridIso,
+           ph_pt_tightID_hybridIso,
+           ph_pt_mediumID_hybridIso,
+           ph_pt_hybridCOIso,
+           ph_pt_tightID_hybridCOIso,
+           ph_pt_mediumID_hybridCOIso,
            ph_topoetcone40_tightID,
            ph_ptcone20_tightID,
            ph_topoetcone40_pt_tightID,
@@ -195,16 +213,22 @@ def processfile(filetag):
             #print(e.eventNumber)
             #print(i)
             
-            sf_baseline = e.ph_id_effSF_baseline_NOSYS[i]
-            sf_tightID  = e.ph_id_effSF_tightID_NOSYS[i]
-            sf_tightIso = e.ph_id_effSF_tightIso_NOSYS[i]
-            sf_mediumID = e.ph_id_effSF_mediumID_NOSYS[i]
-            sf_looseIso = e.ph_id_effSF_looseIso_NOSYS[i]
+            sf_baseline     = e.ph_id_effSF_baseline_NOSYS[i]
+            sf_mediumID     = e.ph_id_effSF_mediumID_NOSYS[i]
+            sf_tightID      = e.ph_id_effSF_tightID_NOSYS[i]
+            sf_tightIso     = e.ph_id_effSF_tightIso_NOSYS[i]
+            sf_tightCOIso   = e.ph_id_effSF_tightCOIso_NOSYS[i]
+            sf_looseIso     = e.ph_id_effSF_looseIso_NOSYS[i]
+            sf_hybridIso    = e.ph_id_effSF_looseIso_NOSYS[i] if (recopt>20000.) else e.ph_id_effSF_tightIso_NOSYS[i]
+            sf_hybridCOIso  = e.ph_id_effSF_looseIso_NOSYS[i] if (recopt>25000.) else e.ph_id_effSF_tightCOIso_NOSYS[i]
 
-            tightID  = (ord(e.ph_select_tightID_NOSYS[i] ) > 0)
-            tightIso = (ord(e.ph_select_tightIso_NOSYS[i]) > 0)
-            mediumID = (ord(e.ph_select_mediumID_NOSYS[i]) > 0)
-            looseIso = (ord(e.ph_select_looseIso_NOSYS[i]) > 0)
+            tightID      = (ord(e.ph_select_tightID_NOSYS[i] ) > 0)
+            tightIso     = (ord(e.ph_select_tightIso_NOSYS[i]) > 0)
+            tightCOIso   = (ord(e.ph_select_tightCOIso_NOSYS[i]) > 0)
+            mediumID     = (ord(e.ph_select_mediumID_NOSYS[i]) > 0)
+            looseIso     = (ord(e.ph_select_looseIso_NOSYS[i]) > 0)
+            hybridIso    = (ord(e.ph_select_looseIso_NOSYS[i]) > 0) if (recopt>20000.) else (ord(e.ph_select_tightIso_NOSYS[i]) > 0)
+            hybridCOIso  = (ord(e.ph_select_looseIso_NOSYS[i]) > 0) if (recopt>25000.) else (ord(e.ph_select_tightCOIso_NOSYS[i]) > 0)
 
             topoetcone20 = e.ph_topoetcone20_NOSYS[i_baseline]
             topoetcone40 = e.ph_topoetcone40_NOSYS[i_baseline]
@@ -229,20 +253,47 @@ def processfile(filetag):
             if tightIso:
                 ph_pt_tightIso              .Fill(truthpt/1000., sf_tightIso)
                 
+            if tightCOIso:
+                ph_pt_tightCOIso            .Fill(truthpt/1000., sf_tightCOIso)
+                
             if looseIso:
                 ph_pt_looseIso              .Fill(truthpt/1000., sf_looseIso)
+
+            if hybridIso:
+                ph_pt_hybridIso             .Fill(truthpt/1000., sf_hybridIso)
+                
+            if hybridCOIso:
+                ph_pt_hybridCOIso           .Fill(truthpt/1000., sf_hybridCOIso)
                 
             if tightID and tightIso:
                 ph_pt_tightID_tightIso      .Fill(truthpt/1000., sf_tightID*sf_tightIso)
                 
+            if tightID and tightCOIso:
+                ph_pt_tightID_tightCOIso    .Fill(truthpt/1000., sf_tightID*sf_tightCOIso)
+                
             if tightID and looseIso:
                 ph_pt_tightID_looseIso      .Fill(truthpt/1000., sf_tightID*sf_looseIso)
+            
+            if tightID and hybridIso:
+                ph_pt_tightID_hybridIso     .Fill(truthpt/1000., sf_tightID*sf_hybridIso)
+            
+            if tightID and hybridCOIso:
+                ph_pt_tightID_hybridCOIso   .Fill(truthpt/1000., sf_tightID*sf_hybridCOIso)
             
             if mediumID and tightIso:
                 ph_pt_mediumID_tightIso     .Fill(truthpt/1000., sf_mediumID*sf_tightIso)
                 
+            if mediumID and tightCOIso:
+                ph_pt_mediumID_tightCOIso   .Fill(truthpt/1000., sf_mediumID*sf_tightCOIso)
+                
             if mediumID and looseIso:
                 ph_pt_mediumID_looseIso     .Fill(truthpt/1000., sf_mediumID*sf_looseIso)
+
+            if mediumID and hybridIso:
+                ph_pt_mediumID_hybridIso    .Fill(truthpt/1000., sf_mediumID*sf_hybridIso)
+
+            if mediumID and hybridCOIso:
+                ph_pt_mediumID_hybridCOIso  .Fill(truthpt/1000., sf_mediumID*sf_hybridCOIso)
 
             i_baseline+=1
             break
