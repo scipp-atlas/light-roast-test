@@ -13,6 +13,8 @@ def processfile(filetag):
     output = r.TFile(f"efficoutputs/{filetag}.root","RECREATE")
 
     # 1D plots of pT
+    ph_pt_truth_SUSY_all = r.TH1F("ph_pt_truth_SUSY_all", "ph_pT;true #gamma p_{T} [GeV]; Entries/(5 GeV)", 20, 0, 100)
+    ph_pt_truth_SUSY_fiducial = r.TH1F("ph_pt_truth_SUSY_fiducial", "ph_pT;true #gamma p_{T} [GeV]; Entries/(5 GeV)", 20, 0, 100)
     ph_pt_truth = r.TH1F("ph_pt_truth", "ph_pT;true #gamma p_{T} [GeV]; Entries/(5 GeV)", 20, 0, 100)
     ph_pt_reco = r.TH1F("ph_pt_reco", "ph_pT;truth #gamma p_{T} [GeV]; Entries/(5 GeV)", 20, 0, 100)
     ph_pt_baseline = r.TH1F("ph_pt_baseline", "ph_pT;truth #gamma p_{T} [GeV]; Entries/(5 GeV)", 20, 0, 100)
@@ -58,7 +60,9 @@ def processfile(filetag):
                                             10, 0, 100,
                                             20, -0.25, 0.75)
     
-    hists=[ph_pt_truth,
+    hists=[ph_pt_truth_SUSY_all,
+           ph_pt_truth_SUSY_fiducial,
+           ph_pt_truth,
            ph_pt_reco,
            ph_pt_baseline,
            ph_pt_tightID,
@@ -89,23 +93,80 @@ def processfile(filetag):
         if eventcount % 10000 == 0:
             print(f"Processed {eventcount:7d} / {totalevents} events")
 
+        truthjet_tlvs=[]
+        for j in range(len(e.truthjet_pt)):
+            truthjet_tlv = r.TLorentzVector()
+            truthjet_tlv.SetPtEtaPhiM(e.truthjet_pt[j],e.truthjet_eta[j],e.truthjet_phi[j],0)
+            truthjet_tlvs.append(truthjet_tlv)
+
+        truthel_tlvs=[]
+        for el in range(len(e.truthel_pt)):
+            truthel_tlv = r.TLorentzVector()
+            truthel_tlv.SetPtEtaPhiM(e.truthel_pt[el],e.truthel_eta[el],e.truthel_phi[el],0)
+            truthel_tlvs.append(truthel_tlv)
+        
+        truthmu_tlvs=[]
+        for mu in range(len(e.truthmu_pt)):
+            truthmu_tlv = r.TLorentzVector()
+            truthmu_tlv.SetPtEtaPhiM(e.truthmu_pt[mu],e.truthmu_eta[mu],e.truthmu_phi[mu],0)
+            truthmu_tlvs.append(truthmu_tlv)
+
         truthph_index=-1
         truthph_tlv=None
         for i in range(len(e.truthph_pt)):
+
+            # SUSY photon requirement
+            if e.truthph_origin[i] != 22:
+                continue
+
+            truthph_cand_tlv = r.TLorentzVector()
+            truthph_cand_tlv.SetPtEtaPhiM(e.truthph_pt[i],e.truthph_eta[i],e.truthph_phi[i],0)
+
+            ph_pt_truth_SUSY_all.Fill(truthph_cand_tlv.Pt()/1000.)
+            
+            # Fiducial cuts
             if e.truthph_pt[i] < 10000:
                 continue
+                
             if abs(e.truthph_eta[i])>2.37 or (abs(e.truthph_eta[i])>1.37 and abs(e.truthph_eta[i])<1.52):
                 continue
             
-            if e.truthph_origin[i] != 22:
-                continue
+            ph_pt_truth_SUSY_fiducial.Fill(truthph_cand_tlv.Pt()/1000.)
             
-            # isolation? overlap?
+            # ==================================================================================
+            # isolation/dR vetos
+            mindR_truthph_truthjet=999.
+            for truthjet_tlv in truthjet_tlvs:
+                dR = truthph_cand_tlv.DeltaR(truthjet_tlv)
+                if dR<0.10: continue
+                mindR_truthph_truthjet = min(mindR_truthph_truthjet,dR)
+            if mindR_truthph_truthjet < 0.4:
+                # debug if desired
+                #for truthjet_tlv in truthjet_tlvs:
+                #    dR = truthph_cand_tlv.DeltaR(truthjet_tlv)
+                #    print(f"ph_pt: {truthph_cand_tlv.Pt()/1000.:5.0f}; ph_eta: {truthph_cand_tlv.Eta():5.2f}; ph_phi: {truthph_cand_tlv.Phi():5.2f}; jet_pt: {truthjet_tlv.Pt()/1000.:5.0f}; jet_eta: {truthjet_tlv.Eta():5.2f}; jet_phi: {truthjet_tlv.Phi():5.2f}; dR={dR:5.2f}")
+                continue
 
-            ph_pt_truth.Fill(e.truthph_pt[i]/1000.)
+            mindR_truthph_truthel=999.
+            for truthel_tlv in truthel_tlvs:
+                dR = truthph_cand_tlv.DeltaR(truthel_tlv)
+                if dR<0.05: continue
+                mindR_truthph_truthel = min(mindR_truthph_truthel,dR)
+            if mindR_truthph_truthel < 0.4: 
+                continue
+
+            mindR_truthph_truthmu=999.
+            for truthmu_tlv in truthmu_tlvs:
+                dR = truthph_cand_tlv.DeltaR(truthmu_tlv)
+                mindR_truthph_truthmu = min(mindR_truthph_truthmu,dR)
+            if mindR_truthph_truthmu < 0.4: 
+                continue
+            # ==================================================================================
+
+            ph_pt_truth.Fill(truthph_cand_tlv.Pt()/1000.)
+            
             truthph_index=i
-            truthph_tlv=r.TLorentzVector()
-            truthph_tlv.SetPtEtaPhiM(e.truthph_pt[i],e.truthph_eta[i],e.truthph_phi[i],0)
+            truthph_tlv = truthph_cand_tlv
             break
 
         if truthph_tlv is None:

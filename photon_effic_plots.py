@@ -11,6 +11,9 @@ colors={"reco": r.kBlack,
         "tightID_looseIso": r.kRed-8,
         "mediumID_tightIso": r.kRed-6,
         "mediumID_looseIso": r.kRed-5,
+        "truth": r.kBlue,
+        "truth_SUSY_fiducial": r.kBlue+1,
+        "truth_SUSY_all": r.kBlue+2
         }
 
 markers={"reco": 8,
@@ -23,6 +26,8 @@ markers={"reco": 8,
          "tightID_looseIso": 28,
          "mediumID_tightIso": 30,
          "mediumID_looseIso": 32,
+         "truth": 34,
+         "truth_SUSY_fiducial": 35
         }
 
 def setStyles(objs):
@@ -31,57 +36,117 @@ def setStyles(objs):
         obj.SetFillColor(0)
         obj.SetMarkerColor(colors[tag])
         obj.SetMarkerStyle(markers[tag])
+        obj.SetTitle(";True p_{T}^{#gamma} [GeV];Efficiency")
         obj.Write(f"eff_{tag}")
 
-def makeplots(f):
+def makeplots(f,denom="truth",isoOnly=False):
     rf = r.TFile(f,"RO")
     h={}
-    for t in ["truth", "reco", "baseline",
-              "tightID", "tightIso",
-              "mediumID", "looseIso",
-              "tightID_tightIso", "tightID_looseIso",
-              "mediumID_tightIso", "mediumID_looseIso",
-              ]:
+
+    std_plots=[
+        "truth_SUSY_all",
+        "truth_SUSY_fiducial",
+        "truth",
+        "reco",
+        "baseline"
+    ]
+    
+    iso_plots=[
+        "looseIso",
+        "tightIso"
+    ]
+
+    ID_plots=[
+        "baseline",
+        "mediumID",
+        "tightID"
+    ]
+
+    IDiso_plots=[
+        "tightID_tightIso", 
+        "tightID_looseIso",
+        "mediumID_tightIso", 
+        "mediumID_looseIso",        
+    ]
+
+    all_plots= std_plots + iso_plots + ID_plots + IDiso_plots
+
+    plots=None
+    if isoOnly:
+        plots=std_plots+iso_plots
+    elif denom=="truth_SUSY_all":
+        plots=std_plots
+    else:
+        plots=all_plots
+    
+    for t in plots:
+        if denom=="baseline" and (t=="truth" or t=="reco"):
+            continue
+        if denom=="truth" and ("truth_SUSY" in t):
+            continue
         h[t] = rf.Get(f"ph_pt_{t}")
 
     ro = r.TFile(f"{f[:-5]}_effs.root","RECREATE")   
 
+    h_denom=h[denom]
+    
     effs={}
-    effs["reco"] = r.TEfficiency(h["reco"],h["truth"])
-    effs["baseline"] = r.TEfficiency(h["baseline"],h["truth"])
+    if "truth_SUSY_fiducial" in h:
+        effs["truth_SUSY_fiducial"] = r.TEfficiency(h["truth_SUSY_fiducial"], h_denom)
+    if "truth" in h:
+        effs["truth"] = r.TEfficiency(h["truth"], h_denom)
+    if "reco" in h:
+        effs["reco"] = r.TEfficiency(h["reco"],h_denom)
+    if "baseline" in h:
+        effs["baseline"] = r.TEfficiency(h["baseline"],h_denom)
+        
     for Iso in ["looseIso", "tightIso"]:
-        effs[Iso] = r.TEfficiency(h[Iso],h["truth"])
+        if Iso not in h: continue
+        effs[Iso] = r.TEfficiency(h[Iso],h_denom)
 
     for ID in ["mediumID", "tightID"]:
-        effs[ID] = r.TEfficiency(h[ID],h["truth"])
+        if ID not in h: continue
+        effs[ID] = r.TEfficiency(h[ID],h_denom)
 
         for Iso in ["looseIso", "tightIso"]:
-            effs[ID+"_"+Iso] = r.TEfficiency(h[ID+"_"+Iso],h["truth"])
+            if ID+"_"+Iso not in effs: continue
+            effs[ID+"_"+Iso] = r.TEfficiency(h[ID+"_"+Iso],h_denom)
 
     setStyles(effs)
-    
-    effs["baseline"].SetTitle(";True p_{T}^{#gamma} [GeV];Efficiency")
     
     c=r.TCanvas("effics","effics",800,600)
     c.SetGridy(1)
     c.SetLeftMargin(0.15)
     c.SetBottomMargin(0.15)
-    effs["reco"].Draw()
-    leg=r.TLegend(0.3,0.2,0.85,0.5)
-    leg.AddEntry(effs["reco"], "reco")
+    drawhist=""
+    if denom=="truth":
+        drawhist="reco"
+    elif denom=="truth_SUSY_all":
+        drawhist="truth_SUSY_fiducial"
+    elif denom=="baseline":
+        drawhist="looseIso"
+        
+    effs[drawhist].Draw()
+    leg=r.TLegend(0.5,0.2,0.85,0.3+0.035*(len(effs)-2))
+    leg.AddEntry(effs[drawhist], drawhist)
     for tag,obj in effs.items():
-        if tag=="reco": continue
+        if tag==drawhist: continue
+        if tag==denom: continue
         #if "_" not in tag: continue
         obj.Draw("same")
         if tag == "baseline":
-            leg.AddEntry(obj, "baseline")
-        else:
-            leg.AddEntry(obj, f"baseline+{tag.replace('_','+')}")
+            leg.AddEntry(obj, "looseID")
+        elif denom=="truth":
+            leg.AddEntry(obj, f"looseID+{tag.replace('_','+')}")
+        elif denom=="baseline":
+            leg.AddEntry(obj, f"{tag.replace('_','+')}")
+        elif denom=="truth_SUSY_all":
+            leg.AddEntry(obj, f"{tag.replace('_','+')}")
             
     leg.Draw()
     c.Update()
     
-    axishist=effs["reco"].GetPaintedGraph().GetHistogram()
+    axishist=effs[drawhist].GetPaintedGraph().GetHistogram()
     axishist.GetYaxis().SetTitle("Efficiency")
     axishist.GetYaxis().SetRangeUser(0,1)
     axishist.GetYaxis().SetLabelSize(0.05)
@@ -100,7 +165,7 @@ def makeplots(f):
     tl.SetTextFont(82)
     tl.DrawLatex(0.6, 0.92,f"{f[13:-5]}")
     
-    c.Print(f"{f[:-5]}_effs.pdf")
+    c.Print((f"{f[:-5]}_effs_{denom}.pdf").replace("efficoutputs/","efficoutputs/pdfs/"))
 
 
     # pt plot
@@ -131,5 +196,6 @@ gridpoints=glob.glob("efficoutputs/*WB.root")
 
 for f in gridpoints:
     print(f)
-    makeplots(f)
-
+    #makeplots(f,"baseline",True)
+    #makeplots(f,"truth",False)
+    makeplots(f,"truth_SUSY_all",False)
