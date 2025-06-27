@@ -1,8 +1,8 @@
 #!/usr/bin/bash
 
 version="v3"
-outputarea=/data/mhance/SUSY/ntuples/v3.1_condor
-jsoninput=${PWD}/dataset_runnable/af_${version}.json
+outputarea=/data/mhance/SUSY/ntuples/v3.1_condor_2
+jsoninput=/home/mhance/light-roast/dataset_runnable/af_${version}.json
 dataset_names=$(jq -r 'keys_unsorted[]' ${jsoninput})
 
 for ds in ${dataset_names}; do
