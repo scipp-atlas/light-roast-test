@@ -1,6 +1,7 @@
 import ROOT as r
 import glob
 
+
 colors={"reco": r.kBlack,
         "baseline": r.kRed,
         "tightID": r.kRed+1,
@@ -10,8 +11,11 @@ colors={"reco": r.kBlack,
         "tightCOIso": r.kOrange,
         "hybridIso": r.kOrange+1,
         "hybridCOIso": r.kOrange+2,
-        "tightID_tightIso": r.kRed+3,
-        "tightID_looseIso": r.kRed-8,
+        "tightID_looseIso": r.kViolet,
+        "tightID_tightIso": r.kViolet-1,
+        "tightID_tightCOIso": r.kViolet-2,
+        "tightID_hybridIso": r.kViolet-3,
+        "tightID_hybridCOIso": r.kViolet-4,
         "mediumID_tightIso": r.kRed-6,
         "mediumID_looseIso": r.kRed-5,
         "truth": r.kBlue,
@@ -28,8 +32,11 @@ markers={"reco": 8,
          "looseIso": 33,
          "hybridIso": 37,
          "hybridCOIso": 38,
-         "tightID_tightIso": 4,
-         "tightID_looseIso": 28,
+         "tightID_looseIso": 4,
+         "tightID_tightIso": 28,
+         "tightID_tightCOIso": 39,
+         "tightID_hybridIso": 40,
+         "tightID_hybridCOIso": 41,
          "mediumID_tightIso": 30,
          "mediumID_looseIso": 32,
          "truth": 34,
@@ -44,6 +51,7 @@ def setStyles(objs):
         obj.SetMarkerStyle(markers[tag])
         obj.SetTitle(";True p_{T}^{#gamma} [GeV];Efficiency")
         obj.Write(f"eff_{tag}")
+
 
 def makeplots(f,denom="truth",isoOnly=False):
     rf = r.TFile(f,"RO")
@@ -71,22 +79,35 @@ def makeplots(f,denom="truth",isoOnly=False):
         "tightID"
     ]
 
-    IDiso_plots=[
-        "tightID_tightIso", 
-        "tightID_looseIso",
-        "mediumID_tightIso", 
-        "mediumID_looseIso",        
+    IDIso_tightID_plots=[
+        "tightID_looseIso", 
+        "tightID_tightIso",
+        "tightID_tightCOIso",
+        "tightID_hybridIso",
+        "tightID_hybridCOIso"
     ]
+
+    IDIso_mediumID_plots=[
+        "mediumID_looseIso", 
+        "mediumID_tightIso",
+        "mediumID_tightCOIso",
+        "mediumID_hybridIso",
+        "mediumID_hybridCOIso"
+    ]
+    
+    IDiso_plots=IDIso_tightID_plots+IDIso_mediumID_plots
 
     all_plots= std_plots + iso_plots + ID_plots + IDiso_plots
 
     plots=None
     if isoOnly:
-        plots=std_plots+iso_plots
+        #plots=std_plots+iso_plots
+        plots=std_plots+["tightID"]+IDIso_tightID_plots
     elif denom=="truth_SUSY_all":
         plots=std_plots
     else:
         plots=all_plots
+    print(plots)
     
     for t in plots:
         if denom=="baseline" and (t=="truth" or t=="reco"):
@@ -110,16 +131,16 @@ def makeplots(f,denom="truth",isoOnly=False):
         effs["baseline"] = r.TEfficiency(h["baseline"],h_denom)
         
     for Iso in iso_plots:
-        if Iso not in h: continue
-        effs[Iso] = r.TEfficiency(h[Iso],h_denom)
+        if Iso in h:
+            effs[Iso] = r.TEfficiency(h[Iso],h_denom)
 
     for ID in ["mediumID", "tightID"]:
-        if ID not in h: continue
-        effs[ID] = r.TEfficiency(h[ID],h_denom)
+        if ID in h:
+            effs[ID] = r.TEfficiency(h[ID],h_denom)
 
         for Iso in iso_plots:
-            if ID+"_"+Iso not in effs: continue
-            effs[ID+"_"+Iso] = r.TEfficiency(h[ID+"_"+Iso],h_denom)
+            if ID+"_"+Iso in h:
+                effs[ID+"_"+Iso] = r.TEfficiency(h[ID+"_"+Iso],h_denom)
 
     setStyles(effs)
     
@@ -132,8 +153,11 @@ def makeplots(f,denom="truth",isoOnly=False):
         drawhist="reco"
     elif denom=="truth_SUSY_all":
         drawhist="truth_SUSY_fiducial"
-    elif denom=="baseline":
+    elif denom=="baseline" and "looseIso" in effs:
         drawhist="looseIso"
+    elif denom=="baseline":
+        drawhist="tightID_looseIso"
+    print(list(effs.keys()))
         
     effs[drawhist].Draw()
     leg=r.TLegend(0.5,0.2,0.85,0.3+0.035*(len(effs)-2))
@@ -206,5 +230,6 @@ gridpoints=glob.glob("efficoutputs/*WB.root")
 for f in gridpoints:
     print(f)
     makeplots(f,"baseline",True)
-    makeplots(f,"truth",False)
-    makeplots(f,"truth_SUSY_all",False)
+    makeplots(f,"truth",True)
+    #makeplots(f,"truth",False)
+    #makeplots(f,"truth_SUSY_all",False)
