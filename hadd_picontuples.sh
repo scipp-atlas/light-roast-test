@@ -9,7 +9,8 @@ N=5
 
 for inputfiles in ""; do #"_sig" "_mc" "_data"; do
 
-    jsoninput=../light-roast/dataset_runnable/af_${version}${inputfiles}.json
+    #jsoninput=../light-roast/dataset_runnable/af_${version}${inputfiles}.json
+    jsoninput=/data/kratsg/radiative-decays/af_${version}.json
     dataset_names=$(jq -r 'keys_unsorted[]' ${jsoninput} | sed s/_mc20[ade]/_mc20/g | sed s/_mc23[ad]/_mc23/g | uniq)
 
     for ds in ${dataset_names}; do
@@ -20,7 +21,10 @@ for inputfiles in ""; do #"_sig" "_mc" "_data"; do
     
         echo "Working on ${ds}"
 
-	hadd -f /data/mhance/SUSY/ntuples/v3.1_condor_2/output_${ds}.root /data/mhance/SUSY/ntuples/v3.1_condor_2/output_${ds}*.root &
+	#hadd -f /data/mhance/SUSY/ntuples/v3.1_condor_2/output_${ds}.root /data/mhance/SUSY/ntuples/v3.1_condor_2/output_${ds}*.root &
+	rm -f /data/mhance/SUSY/ntuples/v3.X/output_${ds}.root
+	mv /data/mhance/SUSY/ntuples/v3.X/output_${ds}*.root /data/mhance/SUSY/ntuples/v3.X/campaigns
+	hadd -f /data/mhance/SUSY/ntuples/v3.X/output_${ds}.root /data/mhance/SUSY/ntuples/v3.X/campaigns/output_${ds}*.root &
 
 	if [[ $(jobs -r -p | wc -l) -ge $N ]]; then
 	    # now there are $N jobs already running, so wait here for any job
