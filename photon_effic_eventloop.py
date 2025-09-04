@@ -4,8 +4,13 @@ from pathlib import Path
 import glob
 import os
 
+run2path="/data/mhance/SUSY/ntuples/v3_6"
+run3path="/data/mhance/SUSY/ntuples/v3.18"
+
+runpath=run2path
+
 def processfile(filetag):
-    filename=glob.glob(f"/data/mhance/SUSY/ntuples/v3_6/user.bhodkins.RadiativeDecays.{filetag}.v3.*__NOFILTER_ANALYSIS.root/user.bhodkins.*.ANALYSIS.root")
+    filename=glob.glob(f"{runpath}/user.bhodkins.RadiativeDecays.{filetag}.v3.*__NOFILTER_ANALYSIS.root/user.bhodkins.*.ANALYSIS.root")
     
     f=r.TFile(filename[0],"RO")
     t=f.Get("analysis")
@@ -212,16 +217,48 @@ def processfile(filetag):
 
             #print(e.eventNumber)
             #print(i)
-            
-            sf_baseline     = e.ph_id_effSF_baseline_NOSYS[i]
-            sf_mediumID     = e.ph_id_effSF_mediumID_NOSYS[i]
-            sf_tightID      = e.ph_id_effSF_tightID_NOSYS[i]
-            sf_tightIso     = e.ph_id_effSF_tightIso_NOSYS[i]
-            sf_tightCOIso   = e.ph_id_effSF_tightCOIso_NOSYS[i]
-            sf_looseIso     = e.ph_id_effSF_looseIso_NOSYS[i]
-            sf_hybridIso    = e.ph_id_effSF_looseIso_NOSYS[i] if (recopt>20000.) else e.ph_id_effSF_tightIso_NOSYS[i]
-            sf_hybridCOIso  = e.ph_id_effSF_looseIso_NOSYS[i] if (recopt>25000.) else e.ph_id_effSF_tightCOIso_NOSYS[i]
 
+            sf_baseline     = 1.
+            sf_mediumID     = 1.
+            sf_tightID      = 1.
+            sf_tightIso     = 1.
+            sf_tightCOIso   = 1.
+            sf_looseIso     = 1.
+            sf_hybridIso    = 1.
+            sf_hybridCOIso  = 1.
+
+            run2idsfgood  = False # still have identical values across loose/medium/tight, but otherwise OK.  Removing just to have apples-to-apples comparisons with Run 3
+            run3idsfgood  = False # somehow also problematic
+            run2isosfgood = False # not good in this round of ntuples, but will be in next round
+            run3isosfgood = False # not good at all
+
+            if runpath is run2path:                
+                if run2idsfgood:
+                    sf_baseline     = e.ph_id_effSF_baseline_NOSYS[i]
+                    sf_mediumID     = e.ph_id_effSF_mediumID_NOSYS[i]
+                    sf_tightID      = e.ph_id_effSF_tightID_NOSYS[i]
+            
+                if run2isosfgood:
+                    sf_tightIso     = e.ph_isol_effSF_tightIso_NOSYS[i]
+                    sf_tightCOIso   = e.ph_isol_effSF_tightCOIso_NOSYS[i]
+                    sf_looseIso     = e.ph_isol_effSF_looseIso_NOSYS[i]
+                    sf_hybridIso    = e.ph_isol_effSF_looseIso_NOSYS[i] if (recopt>20000.) else e.ph_isol_effSF_tightIso_NOSYS[i]
+                    sf_hybridCOIso  = e.ph_isol_effSF_looseIso_NOSYS[i] if (recopt>25000.) else e.ph_isol_effSF_tightCOIso_NOSYS[i]
+
+            elif runpath is run3path:
+                if run3idsfgood:
+                    sf_baseline     = e.ph_id_effSF_baseline_NOSYS[i]
+                    sf_mediumID     = e.ph_id_effSF_mediumID_NOSYS[i]
+                    sf_tightID      = e.ph_id_effSF_tightID_NOSYS[i]
+            
+                if run3isosfgood:
+                    sf_tightIso     = e.ph_isol_effSF_tightIso_NOSYS[i]
+                    sf_tightCOIso   = e.ph_isol_effSF_tightCOIso_NOSYS[i]
+                    sf_looseIso     = e.ph_isol_effSF_looseIso_NOSYS[i]
+                    sf_hybridIso    = e.ph_isol_effSF_looseIso_NOSYS[i] if (recopt>20000.) else e.ph_isol_effSF_tightIso_NOSYS[i]
+                    sf_hybridCOIso  = e.ph_isol_effSF_looseIso_NOSYS[i] if (recopt>25000.) else e.ph_isol_effSF_tightCOIso_NOSYS[i]
+
+            
             tightID      = (ord(e.ph_select_tightID_NOSYS[i] ) > 0)
             tightIso     = (ord(e.ph_select_tightIso_NOSYS[i]) > 0)
             tightCOIso   = (ord(e.ph_select_tightCOIso_NOSYS[i]) > 0)
@@ -308,11 +345,11 @@ def processfile(filetag):
 
 #tag="545767.N2_200_N1_190_WB.mc20d"
 
-ntupledirs=glob.glob("/data/mhance/SUSY/ntuples/v3_6/user.bhodkins.RadiativeDecays.*.v3.*__NOFILTER_ANALYSIS.root")
+ntupledirs=glob.glob(f"{runpath}/user.bhodkins.RadiativeDecays.*.v3.*__NOFILTER_ANALYSIS.root")
 
 dsids=[]
 for i in ntupledirs:
-    tag=i.replace("/data/mhance/SUSY/ntuples/v3_6/user.bhodkins.RadiativeDecays.","").replace(".v3.3","").replace(".v3.6","").replace("__NOFILTER_ANALYSIS.root","")
+    tag=i.replace(f"{runpath}/user.bhodkins.RadiativeDecays.","").replace(".v3.3","").replace(".v3.6","").replace(".v3.18","").replace("__NOFILTER_ANALYSIS.root","")
     print(tag)
     dsid=tag.split(".")[0]
     physicsshort=tag.split(".")[1]
@@ -322,4 +359,7 @@ for i in ntupledirs:
     processfile(tag)
 
 for dsid in dsids:
-    os.system(f"hadd -f efficoutputs/{dsid}.root efficoutputs/{dsid}.*.root")
+    if runpath==run2path:
+        os.system(f"hadd -f efficoutputs/{dsid}.mc20.root efficoutputs/{dsid}.mc20[ade].root")
+    else:
+        os.system(f"hadd -f efficoutputs/{dsid}.mc23.root efficoutputs/{dsid}.mc23[ad].root")

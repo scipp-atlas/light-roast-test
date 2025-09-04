@@ -107,7 +107,7 @@ def makeplots(f,denom="truth",isoOnly=False):
         plots=std_plots
     else:
         plots=all_plots
-    print(plots)
+    #print(plots)
     
     for t in plots:
         if denom=="baseline" and (t=="truth" or t=="reco"):
@@ -157,7 +157,7 @@ def makeplots(f,denom="truth",isoOnly=False):
         drawhist="looseIso"
     elif denom=="baseline":
         drawhist="tightID_looseIso"
-    print(list(effs.keys()))
+    #print(list(effs.keys()))
         
     effs[drawhist].Draw()
     leg=r.TLegend(0.5,0.2,0.85,0.3+0.035*(len(effs)-2))
@@ -196,7 +196,7 @@ def makeplots(f,denom="truth",isoOnly=False):
     tl.SetNDC()
     tl.SetTextSize(0.03)
     tl.SetTextFont(82)
-    tl.DrawLatex(0.6, 0.92,f"{f[13:-5]}")
+    tl.DrawLatex(0.56, 0.92,f"{f[13:-5]}")
     
     c.Print((f"{f[:-5]}_effs_{denom}.pdf").replace("efficoutputs/","efficoutputs/pdfs/"))
 
@@ -224,8 +224,9 @@ def makeplots(f,denom="truth",isoOnly=False):
     ro.Close()
     rf.Close()
 
-
-gridpoints=glob.glob("efficoutputs/*WB.root")
+gridpoints=[]
+gridpoints += glob.glob("efficoutputs/*WB.mc20.root")
+gridpoints += glob.glob("efficoutputs/*WB.mc23.root")
 
 for f in gridpoints:
     print(f)
