@@ -94,7 +94,7 @@ def makeplots(f,denom="truth",isoOnly=False):
         "mediumID_hybridIso",
         "mediumID_hybridCOIso"
     ]
-    
+
     IDiso_plots=IDIso_tightID_plots+IDIso_mediumID_plots
 
     all_plots= std_plots + iso_plots + ID_plots + IDiso_plots
@@ -102,7 +102,8 @@ def makeplots(f,denom="truth",isoOnly=False):
     plots=None
     if isoOnly:
         #plots=std_plots+iso_plots
-        plots=std_plots+["tightID"]+IDIso_tightID_plots
+        #plots=std_plots+["tightID"]+IDIso_tightID_plots
+        plots=std_plots+["looseIso"]+["tightIso"]+["tightCOIso"]
     elif denom=="truth_SUSY_all":
         plots=std_plots
     else:
