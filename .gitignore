@@ -169,3 +169,18 @@ cython_debug/
 
 # PyPI configuration file
 .pypirc
+
+# pixi environments
+.pixi
+*.egg-info
+# pixi environments
+.pixi/*
+!.pixi/config.toml
+
+
+# MH additions
+*~
+*.tar
+condor/
+pixi.*
+*.json
