@@ -55,8 +55,8 @@ SELECTIONS = [
 ]
 
 SEL_LABELS = {
-    'Preselection-0L':    'Preselection 0L',
-    'VR-0L-mT-mid':       'VR 0L-mT-mid',
+    'Preselection-0L':    'Preselection-0L',
+    'VR-0L-mT-mid':       'VR-0L-mT-mid',
 }
 
 ID_CRITERIA = ['Tight', 'LoosePrime4', 'Loose']
@@ -200,7 +200,7 @@ def make_plot(hists, sel_key, id_crit, var, run_era_label, run_era_tag, lumi_lab
 
     # Axis formatting
     ax.set_xlabel(VAR_LABELS[var], fontsize=16, labelpad=6, loc='right')
-    ax.set_ylabel('Events / bin width',  fontsize=16, labelpad=6, loc='top')
+    ax.set_ylabel('Events / bin',  fontsize=16, labelpad=6, loc='top')
     ax.tick_params(axis='both', which='both', labelsize=13, direction='in')
     ax.set_xlim(bin_edges[0], bin_edges[-1])
     ax.set_yscale('log')
@@ -211,7 +211,7 @@ def make_plot(hists, sel_key, id_crit, var, run_era_label, run_era_tag, lumi_lab
     if ymax > 0:
         ybot, ytop = ax.get_ylim()
         log_range = np.log10(ytop) - np.log10(max(ybot, 1e-6))
-        ax.set_ylim(top=10 ** (np.log10(ytop) + 0.3 * log_range))
+        ax.set_ylim(top=10 ** (np.log10(ytop) + 0.35 * log_range))
 
     # ATLAS label: "ATLAS" bold italic Helvetica, "Internal" regular — placed side by side
     t_atlas = ax.text(0.05, 0.97, 'ATLAS',
@@ -226,17 +226,15 @@ def make_plot(hists, sel_key, id_crit, var, run_era_label, run_era_tag, lumi_lab
 
     ax.text(0.05, 0.90, lumi_label,
             transform=ax.transAxes, fontsize=11, va='top')
-    ax.text(0.05, 0.84, run_era_label,
-            transform=ax.transAxes, fontsize=11, va='top')
+    ax.text(0.05, 0.83, SEL_LABELS[sel_key],
+            transform=ax.transAxes, fontsize=11, va='top', fontfamily='monospace')
+    ax.text(0.05, 0.77, ID_LABELS[id_crit],
+            transform=ax.transAxes, fontsize=11, va='top', fontfamily='monospace')
 
-    # Selection + ID label (top-right)
-    ax.text(0.97, 0.97,
-            f"{SEL_LABELS[sel_key]}\n{ID_LABELS[id_crit]}",
-            transform=ax.transAxes, fontsize=11, va='top', ha='right')
-
-    # Legend just below the region label
-    ax.legend(fontsize=11, framealpha=0.8, loc='upper right',
-              bbox_to_anchor=(0.97, 0.82))
+    # Legend: reverse handles so order matches the visual stack (top category first)
+    handles, labels = ax.get_legend_handles_labels()
+    ax.legend(handles[::-1], labels[::-1], fontsize=14, framealpha=0.8,
+              loc='upper right', bbox_to_anchor=(0.97, 0.97))
 
     fig.tight_layout()
 
@@ -263,8 +261,9 @@ def make_jfp_comparison_plot(hists, sumw2, sel_key, var, run_era_label, run_era_
     bin_widths  = np.diff(bin_edges)
     bin_centers = 0.5 * (bin_edges[:-1] + bin_edges[1:])
 
-    fig = plt.figure(figsize=(7, 7))
-    gs  = fig.add_gridspec(2, 1, height_ratios=[3, 1], hspace=0.08)
+    fig = plt.figure(figsize=(7, 7), constrained_layout=True)
+    fig.set_constrained_layout_pads(hspace=0.06)
+    gs  = fig.add_gridspec(2, 1, height_ratios=[3, 1])
     ax_main  = fig.add_subplot(gs[0])
     ax_ratio = fig.add_subplot(gs[1], sharex=ax_main)
 
@@ -293,7 +292,7 @@ def make_jfp_comparison_plot(hists, sumw2, sel_key, var, run_era_label, run_era_
         )
         ymax = max(ymax, density[mask].max() if mask.any() else 0)
 
-    ax_main.set_ylabel('JFP + Other Events / bin width', fontsize=16, labelpad=6, loc='top')
+    ax_main.set_ylabel('Events / bin', fontsize=16, labelpad=6, loc='top')
     ax_main.tick_params(axis='both', which='both', labelsize=13, direction='in')
     ax_main.tick_params(axis='x', labelbottom=False)
     ax_main.set_xlim(bin_edges[0], bin_edges[-1])
@@ -314,11 +313,9 @@ def make_jfp_comparison_plot(hists, sumw2, sel_key, var, run_era_label, run_era_
     x1_axes = ax_main.transAxes.inverted().transform((bb.x1, bb.y0))[0]
     ax_main.text(x1_axes + 0.01, 0.97, 'Internal',
                  transform=ax_main.transAxes, fontsize=14, va='top', fontfamily='Nimbus Sans')
-    ax_main.text(0.05, 0.90, lumi_label,    transform=ax_main.transAxes, fontsize=11, va='top')
-    ax_main.text(0.05, 0.84, run_era_label, transform=ax_main.transAxes, fontsize=11, va='top')
-    ax_main.text(0.97, 0.97, SEL_LABELS[sel_key],
-                 transform=ax_main.transAxes, fontsize=11, va='top', ha='right')
-    ax_main.legend(fontsize=11, framealpha=0.8, loc='upper right', bbox_to_anchor=(0.97, 0.82))
+    ax_main.text(0.05, 0.90, lumi_label,         transform=ax_main.transAxes, fontsize=11, va='top')
+    ax_main.text(0.05, 0.83, SEL_LABELS[sel_key], transform=ax_main.transAxes, fontsize=11, va='top', fontfamily='monospace')
+    ax_main.legend(fontsize=14, framealpha=0.8, loc='upper right', bbox_to_anchor=(0.97, 0.97))
 
     # --- Ratio panel ---
     ax_ratio.axhline(1., color='black', linewidth=0.8, linestyle='--')
@@ -331,10 +328,12 @@ def make_jfp_comparison_plot(hists, sumw2, sel_key, var, run_era_label, run_era_
         density_errs = np.sqrt(s2) / bin_widths
 
         valid = (tight_density > 0) & (density > 0)
-        ratio      = np.where(valid, density / tight_density, np.nan)
+        safe_tight = np.where(valid, tight_density, 1.)
+        safe_dens  = np.where(valid, density,       1.)
+        ratio      = np.where(valid, density / safe_tight, np.nan)
         ratio_errs = np.where(valid,
-                               ratio * np.sqrt((density_errs / density) ** 2 +
-                                               (tight_errs  / tight_density) ** 2),
+                               ratio * np.sqrt((density_errs / safe_dens) ** 2 +
+                                               (tight_errs   / safe_tight) ** 2),
                                np.nan)
         ax_ratio.errorbar(
             bin_centers[valid], ratio[valid], yerr=ratio_errs[valid],
@@ -343,14 +342,13 @@ def make_jfp_comparison_plot(hists, sumw2, sel_key, var, run_era_label, run_era_
         )
 
     ax_ratio.set_xlabel(VAR_LABELS[var], fontsize=16, labelpad=6, loc='right')
-    ax_ratio.set_ylabel('Ratio\nto Tight', fontsize=16, labelpad=6)
+    ax_ratio.set_ylabel('Ratio to Tight', fontsize=16, labelpad=6)
     ax_ratio.tick_params(axis='both', which='both', labelsize=13, direction='in')
     ax_ratio.set_ylim(0, 6)
     ax_ratio.yaxis.grid(True, color='lightgray', linewidth=0.7, zorder=0)
     ax_ratio.set_axisbelow(True)
     ax_ratio.axhline(1., color='black', linewidth=0.8, linestyle='--')  # redraw on top
 
-    fig.tight_layout()
 
     fname = f"jfp_comparison_{sel_key}_{var}_{run_era_tag}"
     for ext in ('pdf', 'png'):
