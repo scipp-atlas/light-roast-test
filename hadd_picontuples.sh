@@ -4,11 +4,13 @@
 #source $ATLAS_LOCAL_ROOT_BASE/packageSetups/localSetup.sh "root 6.34.04-x86_64-el9-gcc13-opt"
 
 af_version="v4"
-nt_version="v4"
+nt_version="v4.1"
 
 N=5
 
-rm -rf /data/mhance/SUSY/ntuples/${nt_version}/processor
+#rm -rf /data/mhance/SUSY/ntuples/${nt_version}/processor
+
+fileprefix="PICOPROD_RAv4"
 
 for inputfiles in ""; do #"_sig" "_mc" "_data"; do
 
@@ -26,11 +28,9 @@ for inputfiles in ""; do #"_sig" "_mc" "_data"; do
 
 	#rm -f /data/mhance/SUSY/ntuples/${nt_version}/output_${ds}.root 
 	mkdir -p /data/mhance/SUSY/ntuples/${nt_version}/campaigns
-	#mv /data/mhance/SUSY/ntuples/${nt_version}/output_${ds}*.root /data/mhance/SUSY/ntuples/${nt_version}/campaigns
-	#for c in "a" "d" "e"; do
-	#    mv /data/mhance/SUSY/ntuples/${nt_version}/PICOTEST_RAv4_${ds}${c}.root /data/mhance/SUSY/ntuples/${nt_version}/campaigns/output_${ds}${c}.root
-	#done
-	hadd -f /data/mhance/SUSY/ntuples/${nt_version}/output_${ds}.root /data/mhance/SUSY/ntuples/${nt_version}/campaigns/output_${ds}*.root &
+	mv /data/mhance/SUSY/ntuples/${nt_version}/${fileprefix}_${ds}*.root /data/mhance/SUSY/ntuples/${nt_version}/campaigns
+	nfiles=$(/bin/ls -1 /data/mhance/SUSY/ntuples/${nt_version}/campaigns/${fileprefix}_${ds}*.root | grep .root | wc | awk {'print $1'})
+	hadd -f /data/mhance/SUSY/ntuples/${nt_version}/${fileprefix}_${ds}.root /data/mhance/SUSY/ntuples/${nt_version}/campaigns/${fileprefix}_${ds}*.root
 
 	#if [[ $(jobs -r -p | wc -l) -ge $N ]]; then
 	    # now there are $N jobs already running, so wait here for any job
@@ -38,5 +38,7 @@ for inputfiles in ""; do #"_sig" "_mc" "_data"; do
 	#    wait -n
 	#fi
 
+	echo "Merged ${nfiles} input files for dataset ${ds}"
+	
     done
 done

@@ -184,3 +184,8 @@ cython_debug/
 condor/
 pixi.*
 *.json
+*.root
+ABCD_*/
+abcd*/
+.condor*
+effic*/

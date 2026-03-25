@@ -16,8 +16,10 @@ from abcd_utils import *
 # Configuration
 # ---------------------------------------------------------------------------
 
-tag = "4"
+tag = "4.1"
 base_path = f"/data/mhance/SUSY/ntuples/v{tag}"
+
+file_prefix = f"PICOPROD_RAv4"
 
 sigsamples = [
     "N2_200_N1_185_WB",
@@ -41,14 +43,14 @@ try:
 except:
     pass
 
-if False:
+if True:
     for root, _, files in os.walk(base_path):
         for file in files:
             if not file.endswith('.root'): continue
             if "a.root" in file or "d.root" in file or "e.root" in file: continue
             
             filepath = os.path.join(root, file)
-            if "output_" not in filepath: continue
+            if f"{file_prefix}_" not in filepath: continue
 
             with uproot.open(filepath) as uf:
                 if 'picontuple' in uf:

@@ -99,7 +99,9 @@ def get_region_masks(data):
         (data['mindPhiJetMet']          >  0.4       ) &
         (data['nBTagJets']              == 0         ) &
         (data['nElectrons']             == 0         ) &
-        (data['nMuons']                 == 0         )
+        (data['nMuons']                 == 0         ) &
+        (data['nPhotons_baseline']      == 1         ) &
+        (data['nPhotons_baseline_noOR'] == 1         )
     )
 
     SR_0L_mT_low = PS_0L & (
