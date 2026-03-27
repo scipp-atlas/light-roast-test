@@ -189,3 +189,5 @@ ABCD_*/
 abcd*/
 .condor*
 effic*/
+*plots/
+*venv/
