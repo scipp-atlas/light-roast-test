@@ -92,51 +92,71 @@ def getemptyresults():
 def get_region_masks(data):
     """Return event-level selection masks for each analysis region."""
     PS_0L = (
-        (data['met_met']                >  200*1000.) &
+        (data['met_met']                >  200*1000. ) &
         (data['jet_cleanTightBad_prod'] == 1         ) &
-        (data['j1_pt']                  >  150*1000.) &
-        (data['ph_pt']                  >   10*1000.) &
+        (data['j1_pt']                  >  150*1000. ) &
+        (data['ph_pt']                  >   10*1000. ) &
         (data['mindPhiJetMet']          >  0.4       ) &
         (data['nBTagJets']              == 0         ) &
         (data['nElectrons']             == 0         ) &
         (data['nMuons']                 == 0         ) &
         (data['nPhotons_baseline']      == 1         ) &
-        (data['nPhotons_baseline_noOR'] == 1         )
+        (data['nPhotons_skims']         == 1         ) &
+        (data['nPhotons_baseline_noOR'] == 1         ) &
+        (data['nTau20_veryloose']       == 0         )
     )
 
     SR_0L_mT_low = PS_0L & (
         (data['mTGammaMet']       <   50*1000.) &
-        (data['met_signif']       >   27      ) &
-        (data['nTau20_veryloose'] == 0        )
+        (data['met_signif']       >   25      )
     )
 
     SR_0L_mT_mid = PS_0L & (
         (data['mTGammaMet']       >   50*1000.) &
         (data['mTGammaMet']       <  115*1000.) &
-        (data['met_signif']       >   22      ) &
-        (data['dPhiGammaMet']     <  0.6      ) &
-        (data['nTau20_veryloose'] == 0        )
+        (data['met_signif']       >   21      ) &
+        (data['dPhiGammaMet']     <  0.7      )
     )
 
     SR_0L_mT_hgh = PS_0L & (
         (data['mTGammaMet']       >  115*1000.) &
         (data['met_signif']       >   19      ) &
-        (data['dPhiGammaMet']     <  0.8      ) &
-        (data['nTau20_veryloose'] == 0        )
+        (data['dPhiGammaMet']     <  1.0      )
+    )
+
+    SR_0L_mT_low_loose = PS_0L & (
+        (data['mTGammaMet']       <   50*1000.) &
+        (data['met_signif']       >   18      )
+    )
+
+    SR_0L_mT_mid_loose = PS_0L & (
+        (data['mTGammaMet']       >   50*1000.) &
+        (data['mTGammaMet']       <  115*1000.) &
+        (data['met_signif']       >   14      ) &
+        (data['dPhiGammaMet']     <  0.7      )
+    )
+
+    SR_0L_mT_hgh_loose = PS_0L & (
+        (data['mTGammaMet']       >  115*1000.) &
+        (data['met_signif']       >    8      ) &
+        (data['dPhiGammaMet']     <  1.0      )
     )
 
     VR_0L_mT_mid = PS_0L & (
         (data['mTGammaMet']       >   50*1000.) &
         (data['mTGammaMet']       <  100*1000.) &
-        (data['dPhiGammaMet']     >  2.0      ) &
-        (data['nTau20_veryloose'] == 0        )
+        (data['dPhiGammaMet']     >  2.0      )
     )
 
     return {
         'Preselection': {'0L':        PS_0L        },
         'SR':           {'0L-mT-low': SR_0L_mT_low,
                          '0L-mT-mid': SR_0L_mT_mid,
-                         '0L-mT-hgh': SR_0L_mT_hgh},
+                         '0L-mT-hgh': SR_0L_mT_hgh,
+                         '0L-mT-low-loose': SR_0L_mT_low_loose,
+                         '0L-mT-mid-loose': SR_0L_mT_mid_loose,
+                         '0L-mT-hgh-loose': SR_0L_mT_hgh_loose,
+                         },
         'VR':           {'0L-mT-mid': VR_0L_mT_mid},
     }
 
@@ -263,7 +283,10 @@ def dumpjson(data, isMC, ID="tightID", Iso="tightIso", LoosePrime="LoosePrime4")
     return {'Preselection': {'0L':        ABCDresults(data, PS['0L'],        isMC, ID=ID, Iso=Iso, LoosePrime=LoosePrime)},
             'SR':           {'0L-mT-low': ABCDresults(data, SR['0L-mT-low'], isMC, ID=ID, Iso=Iso, LoosePrime=LoosePrime),
                              '0L-mT-mid': ABCDresults(data, SR['0L-mT-mid'], isMC, ID=ID, Iso=Iso, LoosePrime=LoosePrime),
-                             '0L-mT-hgh': ABCDresults(data, SR['0L-mT-hgh'], isMC, ID=ID, Iso=Iso, LoosePrime=LoosePrime)},
+                             '0L-mT-hgh': ABCDresults(data, SR['0L-mT-hgh'], isMC, ID=ID, Iso=Iso, LoosePrime=LoosePrime),
+                             '0L-mT-low-loose': ABCDresults(data, SR['0L-mT-low-loose'], isMC, ID=ID, Iso=Iso, LoosePrime=LoosePrime),
+                             '0L-mT-mid-loose': ABCDresults(data, SR['0L-mT-mid-loose'], isMC, ID=ID, Iso=Iso, LoosePrime=LoosePrime),
+                             '0L-mT-hgh-loose': ABCDresults(data, SR['0L-mT-hgh-loose'], isMC, ID=ID, Iso=Iso, LoosePrime=LoosePrime)},
             'VR':           {'0L-mT-mid': ABCDresults(data, VR['0L-mT-mid'], isMC, ID=ID, Iso=Iso, LoosePrime=LoosePrime)},
            }
 

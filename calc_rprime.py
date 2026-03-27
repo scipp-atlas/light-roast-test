@@ -26,7 +26,7 @@ import re
 # Configuration
 # ---------------------------------------------------------------------------
 
-RESULTS_DIR  = os.path.join(os.path.dirname(__file__), "ABCD_results_4")
+RESULTS_DIR  = os.path.join(os.path.dirname(__file__), "ABCD_results_4.1")
 LOOSE_PRIMES = ["LoosePrime4", "Loose"]
 REGIONS = [
     ("Preselection", "0L"),
@@ -34,6 +34,24 @@ REGIONS = [
     ("SR",           "0L-mT-low"),
     ("SR",           "0L-mT-mid"),
     ("SR",           "0L-mT-hgh"),
+    ("SR",           "0L-mT-low-loose"),
+    ("SR",           "0L-mT-mid-loose"),
+    ("SR",           "0L-mT-hgh-loose"),
+]
+# SR sub-regions to merge into combined keys for display
+SR_MT_KEYS        = {"SR/0L-mT-low",       "SR/0L-mT-mid",       "SR/0L-mT-hgh"}
+SR_MT_LOOSE_KEYS  = {"SR/0L-mT-low-loose", "SR/0L-mT-mid-loose", "SR/0L-mT-hgh-loose"}
+SR_COMBINED       = "SR/0L"
+SR_COMBINED_LOOSE = "SR/0L-loose"
+# Regions shown in output tables (individual SR mT bins replaced by combined)
+DISPLAY_REGIONS = [
+    "Preselection/0L",
+    "VR/0L-mT-mid",
+    SR_COMBINED,
+    SR_COMBINED_LOOSE,
+    "SR/0L-mT-low-loose",
+    "SR/0L-mT-mid-loose",
+    "SR/0L-mT-hgh-loose",
 ]
 
 SKIP_TAGS    = ("gammajet", "jetjet", "_jj_", "N2_", "signal", "data_")
@@ -49,6 +67,25 @@ def is_run2_mc(path):
 
 def is_run3_mc(path):
     return "mc23" in os.path.basename(path)
+
+def parse_data_year(fname):
+    """Extract 4-digit year from a data filename.
+    Handles both old (data_2017) and new (data_17) formats."""
+    m = re.search(r'_data_(\d{2,4})_', fname)
+    if not m:
+        return None
+    y = int(m.group(1))
+    return y + 2000 if y < 100 else y
+
+def sample_name(fname, loose_prime):
+    """Strip the file prefix and ABCD suffix to get the bare sample name.
+    Handles both old (output_) and new (PICOPROD_RAv4_) prefixes."""
+    name = fname
+    for prefix in ("PICOPROD_RAv4_", "output_"):
+        if name.startswith(prefix):
+            name = name[len(prefix):]
+            break
+    return name.replace(f"_ABCD_tightID_hybridCOIso_{loose_prime}.json", "")
 
 def jfp_other(b, jfp_only=False):
     """(sumweights, staterr) for JFP+Other (or JFP only) in one ABCD bin dict."""
@@ -76,15 +113,19 @@ def calc_rprime_err(rp, n_tt, e_tt, n_tl, e_tl, n_lt, e_lt, n_ll, e_ll):
     rel2 = (e_tt/n_tt)**2 + (e_tl/n_tl)**2 + (e_lt/n_lt)**2 + (e_ll/n_ll)**2
     return rp * math.sqrt(rel2)
 
-def weighted_average(samples):
-    """Uncertainty-weighted average of (value, sigma) pairs."""
+def mean_median(samples):
+    """Mean and median of (value, sigma) pairs.  Returns (mean, median, n)."""
     if not samples:
         return float("nan"), float("nan"), 0
-    weights   = [1.0 / s**2 for _, s in samples]
-    sum_w     = sum(weights)
-    avg       = sum(w * v for w, (v, _) in zip(weights, samples)) / sum_w
-    sigma_avg = 1.0 / math.sqrt(sum_w)
-    return avg, sigma_avg, len(samples)
+    vals   = [v for v, _ in samples]
+    mean   = sum(vals) / len(vals)
+    sv     = sorted(vals)
+    n      = len(sv)
+    if n % 2 == 1:
+        median = sv[n // 2]
+    else:
+        median = (sv[n // 2 - 1] + sv[n // 2]) / 2.0
+    return mean, median, n
 
 # ---------------------------------------------------------------------------
 # R' from per-sample MC
@@ -98,9 +139,13 @@ def collect_rprime_totals(loose_prime, run2, jfp_only=False):
     """
     tot_n  = {f"{rt}/{rn}": {b: 0.0 for b in ("TT","TL","LT","LL")} for rt, rn in REGIONS}
     tot_e2 = {f"{rt}/{rn}": {b: 0.0 for b in ("TT","TL","LT","LL")} for rt, rn in REGIONS}
+    tot_n [SR_COMBINED]       = {b: 0.0 for b in ("TT","TL","LT","LL")}
+    tot_e2[SR_COMBINED]       = {b: 0.0 for b in ("TT","TL","LT","LL")}
+    tot_n [SR_COMBINED_LOOSE] = {b: 0.0 for b in ("TT","TL","LT","LL")}
+    tot_e2[SR_COMBINED_LOOSE] = {b: 0.0 for b in ("TT","TL","LT","LL")}
 
     pattern = os.path.join(RESULTS_DIR,
-                           f"output_*_ABCD_tightID_hybridCOIso_{loose_prime}.json")
+                           f"*_ABCD_tightID_hybridCOIso_{loose_prime}.json")
     for path in sorted(glob.glob(pattern)):
         fname = os.path.basename(path)
         if any(t in fname for t in SKIP_TAGS):
@@ -119,6 +164,12 @@ def collect_rprime_totals(loose_prime, run2, jfp_only=False):
                 sw, se = jfp_other(reg[b], jfp_only=jfp_only)
                 tot_n[key][b]  += sw
                 tot_e2[key][b] += se**2
+                if key in SR_MT_KEYS:
+                    tot_n [SR_COMBINED][b] += sw
+                    tot_e2[SR_COMBINED][b] += se**2
+                if key in SR_MT_LOOSE_KEYS:
+                    tot_n [SR_COMBINED_LOOSE][b] += sw
+                    tot_e2[SR_COMBINED_LOOSE][b] += se**2
 
     results = {}
     for key in tot_n:
@@ -154,18 +205,19 @@ def collect_sf(loose_prime, run2):
     where DD_estimate = (data_TL-prompt_TL)*(data_LT-prompt_LT)/(data_LL-prompt_LL)
     """
     acc = {f"{rt}/{rn}": _zero_abcd() for rt, rn in REGIONS}
+    acc[SR_COMBINED]       = _zero_abcd()
+    acc[SR_COMBINED_LOOSE] = _zero_abcd()
 
     pattern = os.path.join(RESULTS_DIR,
-                           f"output_*_ABCD_tightID_hybridCOIso_{loose_prime}.json")
+                           f"*_ABCD_tightID_hybridCOIso_{loose_prime}.json")
     for path in sorted(glob.glob(pattern)):
         fname = os.path.basename(path)
         basename = os.path.basename(path)
 
         # ---- data files ----
         if "data_" in fname:
-            try:
-                year = int(basename.split("_")[2])
-            except (IndexError, ValueError):
+            year = parse_data_year(fname)
+            if year is None:
                 continue
             if run2  and year not in RUN2_YEARS: continue
             if not run2 and year not in RUN3_YEARS: continue
@@ -173,12 +225,19 @@ def collect_sf(loose_prime, run2):
                 d = json.load(f)
             for reg_type, reg_name in REGIONS:
                 key = f"{reg_type}/{reg_name}"
+                is_sr = key.startswith("SR/")
                 try:
                     reg = d[reg_type][reg_name]
                 except KeyError:
                     continue
                 for b in ("TT", "TL", "LT", "LL"):
+                    if is_sr and b == "TT":
+                        continue  # blind SR TT — no data
                     acc[key][b]["data"] += reg[b]["data"]
+                    if key in SR_MT_KEYS and b != "TT":
+                        acc[SR_COMBINED][b]["data"] += reg[b]["data"]
+                    if key in SR_MT_LOOSE_KEYS and b != "TT":
+                        acc[SR_COMBINED_LOOSE][b]["data"] += reg[b]["data"]
             continue
 
         # ---- background MC files ----
@@ -198,10 +257,20 @@ def collect_sf(loose_prime, run2):
                 sw, se = prompt(reg[b])
                 acc[key][b]["prompt_sw"]  += sw
                 acc[key][b]["prompt_se2"] += se**2
+                if key in SR_MT_KEYS:
+                    acc[SR_COMBINED][b]["prompt_sw"]  += sw
+                    acc[SR_COMBINED][b]["prompt_se2"] += se**2
+                if key in SR_MT_LOOSE_KEYS:
+                    acc[SR_COMBINED_LOOSE][b]["prompt_sw"]  += sw
+                    acc[SR_COMBINED_LOOSE][b]["prompt_se2"] += se**2
 
     # Compute SF per region
     results = {}
     for key, bins in acc.items():
+        if key.startswith("SR/"):
+            results[key] = (float("nan"), float("nan"))
+            continue
+
         # prompt-subtracted counts and their uncertainties
         n, e2 = {}, {}
         for b in ("TT", "TL", "LT", "LL"):
@@ -260,15 +329,14 @@ def collect_vr_comparison(loose_prime, run2, jfp_only=False):
     mc_tt_cat_e2 = {c: 0.0 for c in ("prompt", "efp", "jfp", "other")}
 
     pattern = os.path.join(RESULTS_DIR,
-                           f"output_*_ABCD_tightID_hybridCOIso_{loose_prime}.json")
+                           f"*_ABCD_tightID_hybridCOIso_{loose_prime}.json")
     for path in sorted(glob.glob(pattern)):
         fname = os.path.basename(path)
 
         # ---- data files ----
         if "data_" in fname:
-            try:
-                year = int(fname.split("_")[2])
-            except (IndexError, ValueError):
+            year = parse_data_year(fname)
+            if year is None:
                 continue
             era_years = RUN2_YEARS if run2 else RUN3_YEARS
             if year not in era_years:
@@ -388,10 +456,16 @@ def print_vr_data_comparison(loose_prime, rprime_results, run2, jfp_only=False):
     mc_efp        = mc_tt_cat["efp"]
     mc_efp_e      = math.sqrt(mc_tt_cat_e2["efp"])
 
-    # Hybrid total = MC prompt + MC EFP + ABCD(JFP+Other)
+    mc_other   = mc_tt_cat["other"]
+    mc_other_e = math.sqrt(mc_tt_cat_e2["other"])
+
+    # Hybrid total = MC prompt + MC EFP (+ MC Other if jfp_only) + ABCD(JFP or JFP+Other)
     if not math.isnan(abcd_est):
-        hybrid     = mc_prompt + mc_efp + abcd_est
-        hybrid_e2  = mc_tt_cat_e2["prompt"] + mc_tt_cat_e2["efp"] + abcd_est_err**2
+        hybrid    = mc_prompt + mc_efp + abcd_est
+        hybrid_e2 = mc_tt_cat_e2["prompt"] + mc_tt_cat_e2["efp"] + abcd_est_err**2
+        if jfp_only:
+            hybrid    += mc_other
+            hybrid_e2 += mc_tt_cat_e2["other"]
         hybrid_err = math.sqrt(hybrid_e2)
     else:
         hybrid, hybrid_err = float("nan"), float("nan")
@@ -436,9 +510,35 @@ def print_vr_data_comparison(loose_prime, rprime_results, run2, jfp_only=False):
     row(f"(c) Hybrid MC TT  [{rp_tag}]",             hybrid,       hybrid_err)
     row("      MC prompt",                            mc_prompt,    mc_prompt_e)
     row("      MC EFP",                               mc_efp,       mc_efp_e)
+    if jfp_only:
+        row("      MC Other",                         mc_other,     mc_other_e)
     row(f"      ABCD est ({abcd_label}, R'-scaled)",  abcd_est,     abcd_est_err)
     print(f"  {'─'*70}")
     row("SF  (a) / (c)  [data / hybrid]",             sf,           sf_err)
+
+    # (Data TT - Hybrid MC TT) / ABCD est: how much ABCD must shift for full agreement
+    if not math.isnan(hybrid) and not math.isnan(abcd_est) and abcd_est > 0:
+        mc_fixed_e2 = (mc_tt_cat_e2["prompt"] + mc_tt_cat_e2["efp"] +
+                       (mc_tt_cat_e2["other"] if jfp_only else 0.0))
+        residual    = (data_tt - hybrid) / abcd_est
+        residual_e  = math.sqrt(
+            (data_tt_e**2 + mc_fixed_e2) / abcd_est**2 +
+            (residual * abcd_est_err / abcd_est)**2
+        )
+    else:
+        residual, residual_e = float("nan"), float("nan")
+    row("(Data TT - Hybrid MC) / ABCD est",           residual,     residual_e)
+
+    # Scale factor to apply to MC JFP+Other (or JFP) to match ABCD estimate
+    mc_fake = mc_tt_cat["jfp"] + (0.0 if jfp_only else mc_tt_cat["other"])
+    mc_fake_e2 = mc_tt_cat_e2["jfp"] + (0.0 if jfp_only else mc_tt_cat_e2["other"])
+    if not math.isnan(abcd_est) and mc_fake > 0:
+        sf_mc     = abcd_est / mc_fake
+        sf_mc_err = sf_mc * math.sqrt((abcd_est_err / abcd_est)**2 +
+                                       mc_fake_e2 / mc_fake**2)
+    else:
+        sf_mc, sf_mc_err = float("nan"), float("nan")
+    row(f"SF  ABCD({abcd_label}) / MC({abcd_label})",  sf_mc,        sf_mc_err)
     print(f"  {'─'*70}")
 
 
@@ -447,18 +547,27 @@ def print_vr_data_comparison(loose_prime, rprime_results, run2, jfp_only=False):
 # ---------------------------------------------------------------------------
 
 _FILTER_RE = re.compile(r'_(CVetoBVeto|BFilter|CFilterBVeto)(_mc\d+\w*)$')
+_PTSLICE_RE = re.compile(r'_(H|L)(_maxHTpTV2(?:_mc\d+\w*)?)$')
 
 def group_key(sample):
     """
-    Strip known HF-filter suffixes (CVetoBVeto, BFilter, CFilterBVeto) so that
-    sliced samples of the same process are merged into one row.
-    e.g. Sh_2214_Znunu_pTV2_CVetoBVeto_mc23  →  Sh_2214_Znunu_pTV2_mc23
-         Sh_2214_Znunu_pTV2_BFilter_mc23      →  Sh_2214_Znunu_pTV2_mc23
-    Samples without a recognised filter suffix are left unchanged.
+    Strip known suffixes that slice the same physics process, so that those
+    samples are merged into one row.
+
+    HF-filter slices:
+      Sh_2214_Znunu_pTV2_CVetoBVeto_mc23  →  Sh_2214_Znunu_pTV2_mc23
+      Sh_2214_Znunu_pTV2_BFilter_mc23     →  Sh_2214_Znunu_pTV2_mc23
+
+    pT-range slices (H/L):
+      Sh_2211_Wtaunu_H_maxHTpTV2_mc20     →  Sh_2211_Wtaunu_maxHTpTV2_mc20
+      Sh_2211_Wtaunu_L_maxHTpTV2_mc20     →  Sh_2211_Wtaunu_maxHTpTV2_mc20
     """
     m = _FILTER_RE.search(sample)
     if m:
-        return sample[:m.start()] + m.group(2)
+        sample = sample[:m.start()] + m.group(2)
+    m = _PTSLICE_RE.search(sample)
+    if m:
+        sample = sample[:m.start()] + m.group(2)
     return sample
 
 
@@ -466,19 +575,23 @@ def group_key(sample):
 # Diagnostic: per-sample yields table
 # ---------------------------------------------------------------------------
 
-def print_sample_table(loose_prime, reg_type, reg_name, run2, jfp_only=False):
+def print_sample_table(loose_prime, regions, run2, jfp_only=False, label=None):
     """
     Print a per-sample table of JFP+Other (or JFP only) yields in each ABCD bin
     and the resulting per-sample R', for a given region and LoosePrime working point.
-    Also prints the totals and the weighted-average R'.
+    Also prints the totals and the mean/median R'.
+
+    regions : list of (reg_type, reg_name) tuples — yields are summed across all.
+    label   : display label; defaults to "reg_type/reg_name" for a single region.
     """
+    from collections import defaultdict
     era  = "Run 2" if run2 else "Run 3"
-    key  = f"{reg_type}/{reg_name}"
+    if label is None:
+        label = "/".join(f"{rt}/{rn}" for rt, rn in regions)
     pattern = os.path.join(RESULTS_DIR,
-                           f"output_*_ABCD_tightID_hybridCOIso_{loose_prime}.json")
+                           f"*_ABCD_tightID_hybridCOIso_{loose_prime}.json")
 
     # Accumulate per-sample yields, keyed by group label
-    from collections import defaultdict
     grp_n  = defaultdict(lambda: {b: 0.0 for b in ("TT","TL","LT","LL")})
     grp_e2 = defaultdict(lambda: {b: 0.0 for b in ("TT","TL","LT","LL")})
 
@@ -490,17 +603,17 @@ def print_sample_table(loose_prime, reg_type, reg_name, run2, jfp_only=False):
         if not run2 and not is_run3_mc(path): continue
         with open(path) as f:
             d = json.load(f)
-        try:
-            reg = d[reg_type][reg_name]
-        except KeyError:
-            continue
-        sample = fname.replace("output_", "").replace(
-            f"_ABCD_tightID_hybridCOIso_{loose_prime}.json", "")
-        gkey = group_key(sample)
-        for b in ("TT", "TL", "LT", "LL"):
-            sw, se = jfp_other(reg[b], jfp_only=jfp_only)
-            grp_n[gkey][b]  += sw
-            grp_e2[gkey][b] += se**2
+        sample = sample_name(fname, loose_prime)
+        gkey   = group_key(sample)
+        for reg_type, reg_name in regions:
+            try:
+                reg = d[reg_type][reg_name]
+            except KeyError:
+                continue
+            for b in ("TT", "TL", "LT", "LL"):
+                sw, se = jfp_other(reg[b], jfp_only=jfp_only)
+                grp_n[gkey][b]  += sw
+                grp_e2[gkey][b] += se**2
 
     # Build rows from grouped totals
     rows = []
@@ -518,7 +631,7 @@ def print_sample_table(loose_prime, reg_type, reg_name, run2, jfp_only=False):
         rows.append((gkey, n["TT"], n["TL"], n["LT"], n["LL"], rp, sigma))
 
     print(f"\n{'='*110}")
-    print(f"  {loose_prime}  |  {key}  |  {era}")
+    print(f"  {loose_prime}  |  {label}  |  {era}")
     print(f"{'='*110}")
     rp_col, srp_col = "R'", "σ(R')"
     hdr = f"  {'Sample':<55}  {'N_TT':>7}  {'N_TL':>7}  {'N_LT':>7}  {'N_LL':>7}  {rp_col:>8}  {srp_col:>8}"
@@ -540,9 +653,9 @@ def print_sample_table(loose_prime, reg_type, reg_name, run2, jfp_only=False):
     print("  " + "-" * (len(hdr) - 2))
     rp_tot   = calc_rprime(tot["TT"], tot["TL"], tot["LT"], tot["LL"])
     print(f"  {'TOTAL':<55}  {tot['TT']:>7.2f}  {tot['TL']:>7.2f}  {tot['LT']:>7.2f}  {tot['LL']:>7.2f}  {rp_tot:>8.4f}")
-    rp_avg, rp_avg_err, n_samp = weighted_average(rp_samples)
-    print(f"\n  Weighted-average R' ({n_samp} samples): {rp_avg:.4f} ± {rp_avg_err:.4f}")
-    print(f"  R' from summed totals:               {rp_tot:.4f}")
+    rp_mean, rp_median, n_samp = mean_median(rp_samples)
+    print(f"\n  Per-sample R' ({n_samp} samples):  mean = {rp_mean:.4f},  median = {rp_median:.4f}")
+    print(f"  R' from summed totals:            {rp_tot:.4f}")
 
 
 # ---------------------------------------------------------------------------
@@ -550,19 +663,29 @@ def print_sample_table(loose_prime, reg_type, reg_name, run2, jfp_only=False):
 # ---------------------------------------------------------------------------
 
 REGION_LABELS = {
-    "Preselection/0L":  "Preselection 0L",
-    "VR/0L-mT-mid":     "VR 0L-mT-mid",
-    "SR/0L-mT-low":     "SR 0L-mT-low",
-    "SR/0L-mT-mid":     "SR 0L-mT-mid",
-    "SR/0L-mT-hgh":     "SR 0L-mT-high",
+    "Preselection/0L":     "Preselection 0L",
+    "VR/0L-mT-mid":        "VR 0L-mT-mid",
+    "SR/0L":               "SR 0L (combined)",
+    "SR/0L-loose":         "SR 0L loose (combined)",
+    "SR/0L-mT-low":        "SR 0L-mT-low",
+    "SR/0L-mT-mid":        "SR 0L-mT-mid",
+    "SR/0L-mT-hgh":        "SR 0L-mT-high",
+    "SR/0L-mT-low-loose":  "SR 0L-mT-low (loose)",
+    "SR/0L-mT-mid-loose":  "SR 0L-mT-mid (loose)",
+    "SR/0L-mT-hgh-loose":  "SR 0L-mT-high (loose)",
 }
 
 REGION_LABELS_TEX = {
-    "Preselection/0L":  r"Preselection 0L",
-    "VR/0L-mT-mid":     r"VR 0L-$m_T$ mid",
-    "SR/0L-mT-low":     r"SR 0L-$m_T$ low",
-    "SR/0L-mT-mid":     r"SR 0L-$m_T$ mid",
-    "SR/0L-mT-hgh":     r"SR 0L-$m_T$ high",
+    "Preselection/0L":     r"Preselection 0L",
+    "VR/0L-mT-mid":        r"VR 0L-$m_T$ mid",
+    "SR/0L":               r"SR 0L",
+    "SR/0L-loose":         r"SR 0L (loose)",
+    "SR/0L-mT-low":        r"SR 0L-$m_T$ low",
+    "SR/0L-mT-mid":        r"SR 0L-$m_T$ mid",
+    "SR/0L-mT-hgh":        r"SR 0L-$m_T$ high",
+    "SR/0L-mT-low-loose":  r"SR 0L-$m_T$ low (loose)",
+    "SR/0L-mT-mid-loose":  r"SR 0L-$m_T$ mid (loose)",
+    "SR/0L-mT-hgh-loose":  r"SR 0L-$m_T$ high (loose)",
 }
 
 LP_LABELS_TEX = {
@@ -586,7 +709,7 @@ def fmt_cell_tex(v, e, n=None):
 
 def make_latex_table(rprime_results, sf_results, jfp_only=False):
     """
-    rprime_results[lp][era][rk] = (rp_avg, sigma_avg, n_samples)
+    rprime_results[lp][era][rk] = (rp, sigma)
     sf_results[lp][era][rk]     = (sf, sf_err)
     """
     lines = []
@@ -607,8 +730,7 @@ def make_latex_table(rprime_results, sf_results, jfp_only=False):
     lines.append(r"\midrule")
 
     for lp in LOOSE_PRIMES:
-        reg_keys = [f"{rt}/{rn}" for rt, rn in REGIONS]
-        for i, rk in enumerate(reg_keys):
+        for i, rk in enumerate(DISPLAY_REGIONS):
             rp2 = rprime_results[lp].get("Run 2", {}).get(rk, (float("nan"), float("nan"), 0))
             rp3 = rprime_results[lp].get("Run 3", {}).get(rk, (float("nan"), float("nan"), 0))
             sf2 = sf_results[lp].get("Run 2", {}).get(rk, (float("nan"), float("nan")))
@@ -668,8 +790,7 @@ if __name__ == "__main__":
                f"  {'Run2 '+col_sf:>{w}}  {'Run3 '+col_sf:>{w}}")
         print(hdr)
         print("  " + "-" * (len(hdr) - 2))
-        for rt, rn in REGIONS:
-            rk  = f"{rt}/{rn}"
+        for rk in DISPLAY_REGIONS:
             rp2 = rprime_results[lp]["Run 2"][rk]
             rp3 = rprime_results[lp]["Run 3"][rk]
             sf2 = sf_results[lp]["Run 2"][rk]
@@ -691,4 +812,11 @@ if __name__ == "__main__":
     # --- Diagnostic: per-sample breakdown for VR-0L-mT-mid ---
     print("\n\n% ---- Per-sample diagnostic ----")
     for run2, era in [(True, "Run 2"), (False, "Run 3")]:
-        print_sample_table(args.loose_prime, "VR", "0L-mT-mid", run2, jfp_only=args.jfp_only)
+        print_sample_table(args.loose_prime, [("VR", "0L-mT-mid")], run2,
+                           jfp_only=args.jfp_only, label="VR/0L-mT-mid")
+        print_sample_table(args.loose_prime,
+                           [("SR", "0L-mT-low"), ("SR", "0L-mT-mid"), ("SR", "0L-mT-hgh")],
+                           run2, jfp_only=args.jfp_only, label="SR/0L (combined)")
+        print_sample_table(args.loose_prime,
+                           [("SR", "0L-mT-low-loose"), ("SR", "0L-mT-mid-loose"), ("SR", "0L-mT-hgh-loose")],
+                           run2, jfp_only=args.jfp_only, label="SR/0L loose (combined)")

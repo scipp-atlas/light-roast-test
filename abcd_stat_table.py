@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """
 Print a table of ABCD background estimates and statistical uncertainties
-for each LooseID working point, using data files from ABCD_results_4.
+for each LooseID working point, using data files from ABCD_results_4.1.
 
-Files matched: output_data_<year>_ABCD_tightID_hybridCOIso_<LooseID>.json
+Files matched: *_data_<year>_ABCD_tightID_hybridCOIso_<LooseID>.json
 ABCD estimate: TT_est = TL * LT / LL
 Stat error:    delta(TT_est) = TT_est * sqrt(1/TL + 1/LT + 1/LL)
 """
@@ -12,9 +12,10 @@ import glob
 import json
 import math
 import os
+import re
 from collections import defaultdict
 
-RESULTS_DIR = os.path.join(os.path.dirname(__file__), "ABCD_results_4")
+RESULTS_DIR = os.path.join(os.path.dirname(__file__), "ABCD_results_4.1")
 
 LOOSE_ID_ORDER = ["Loose", "LoosePrime4", "LoosePrime5", "LoosePrime4a"]
 
@@ -33,10 +34,14 @@ def load_counts(results_dir):
         for era in RUN_ERAS
     }
 
-    pattern = os.path.join(results_dir, "output_data_*_ABCD_tightID_hybridCOIso_*.json")
+    pattern = os.path.join(results_dir, "*_data_*_ABCD_tightID_hybridCOIso_*.json")
     for path in glob.glob(pattern):
         basename = os.path.basename(path)
-        year = int(basename.split("_")[2])
+        m = re.search(r'_data_(\d{2,4})_', basename)
+        if not m:
+            continue
+        y = int(m.group(1))
+        year = y + 2000 if y < 100 else y
         loose_id = basename.split("hybridCOIso_")[1].replace(".json", "")
 
         era = next((e for e, fn in RUN_ERAS.items() if fn(year)), None)
@@ -70,7 +75,7 @@ def fmt(val, fmt_spec):
 
 
 def print_sr_table(counts):
-    header = f"{'LooseID':<14} {'Region':<18} {'TL':>6} {'LT':>6} {'LL':>6}  {'TT_est':>8}  {'± abs':>8}  {'± rel':>7}"
+    header = f"{'Region':<18} {'LooseID':<14} {'TL':>6} {'LT':>6} {'LL':>6}  {'TT_est':>8}  {'± abs':>8}  {'± rel':>7}"
     sep = "-" * len(header)
 
     for era, era_counts in counts.items():
@@ -93,7 +98,7 @@ def print_sr_table(counts):
                 abs_str = f"±{abs_err:.2f}" if abs_err is not None else "—"
                 tt_str  = f"{tt_est:.2f}"   if tt_est  is not None else "—"
 
-                print(f"{lid:<14} {region_full:<18} {tl:>6} {lt:>6} {ll:>6}  {tt_str:>8}  {abs_str:>8}  {rel_str:>7}")
+                print(f"{region_full:<18} {lid:<14} {tl:>6} {lt:>6} {ll:>6}  {tt_str:>8}  {abs_str:>8}  {rel_str:>7}")
 
         print(sep)
 

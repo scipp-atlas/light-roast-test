@@ -48,10 +48,16 @@ if True:
         for file in files:
             if not file.endswith('.root'): continue
             if "a.root" in file or "d.root" in file or "e.root" in file: continue
+
+            #if "data_" not in file: continue
             
             filepath = os.path.join(root, file)
             if f"{file_prefix}_" not in filepath: continue
 
+            if "campaigns" in filepath: continue
+
+            print(f"processing file {filepath}")
+            
             with uproot.open(filepath) as uf:
                 if 'picontuple' in uf:
                     tree = uf['picontuple']

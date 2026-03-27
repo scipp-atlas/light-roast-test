@@ -16,6 +16,7 @@ import glob
 import json
 import math
 import os
+import re
 
 ABCD_BINS   = ("TT", "TL", "LT", "LL")
 MC_CATS     = ("real", "efp", "jfp", "other", "unclassified")
@@ -26,10 +27,20 @@ RUN3_YEARS  = {2022, 2023, 2024}
 # File helpers
 # ---------------------------------------------------------------------------
 
+def parse_data_year(fname):
+    """Extract 4-digit year from a data filename.
+    Handles both old (data_2017) and new (data_17) formats."""
+    m = re.search(r'_data_(\d{2,4})_', fname)
+    if not m:
+        return None
+    y = int(m.group(1))
+    return y + 2000 if y < 100 else y
+
+
 def find_mc_file(results_dir, sample_substr, loose_prime):
     """Return the path(s) of MC files whose basename contains sample_substr."""
     pattern = os.path.join(results_dir,
-                           f"output_*_ABCD_tightID_hybridCOIso_{loose_prime}.json")
+                           f"*_ABCD_tightID_hybridCOIso_{loose_prime}.json")
     matches = [p for p in sorted(glob.glob(pattern))
                if sample_substr in os.path.basename(p)
                and "data_" not in os.path.basename(p)]
@@ -39,13 +50,12 @@ def find_mc_file(results_dir, sample_substr, loose_prime):
 def find_data_files(results_dir, loose_prime):
     """Return dict year -> path for all data files in the directory."""
     pattern = os.path.join(results_dir,
-                           f"output_data_*_ABCD_tightID_hybridCOIso_{loose_prime}.json")
+                           f"*_data_*_ABCD_tightID_hybridCOIso_{loose_prime}.json")
     result = {}
     for p in sorted(glob.glob(pattern)):
         fname = os.path.basename(p)
-        try:
-            year = int(fname.split("_")[2])
-        except (IndexError, ValueError):
+        year = parse_data_year(fname)
+        if year is None:
             continue
         result[year] = p
     return result
@@ -105,20 +115,27 @@ def print_mc_comparison(sample_substr, loose_prime, region, dir_a, dir_b,
         print(f"  [MC] No file matching '{sample_substr}' in {label_b}")
         return
 
-    # If multiple files match, handle each pair
-    # Match by basename (same filename in both dirs when possible)
-    names_a = {os.path.basename(p): p for p in files_a}
-    names_b = {os.path.basename(p): p for p in files_b}
-    common   = sorted(set(names_a) & set(names_b))
-    only_a   = sorted(set(names_a) - set(names_b))
-    only_b   = sorted(set(names_b) - set(names_a))
+    # Match files by their bare sample name (prefix-stripped), so that
+    # PICOPROD_RAv4_<sample>_ABCD_... and output_<sample>_ABCD_... pair correctly.
+    def bare(path):
+        fname = os.path.basename(path)
+        for prefix in ("PICOPROD_RAv4_", "output_"):
+            if fname.startswith(prefix):
+                fname = fname[len(prefix):]
+                break
+        return fname
 
-    pairs = [(n, names_a[n], names_b[n]) for n in common]
-    # Files only in one tag: pair with None
-    for n in only_a:
-        pairs.append((n, names_a[n], None))
-    for n in only_b:
-        pairs.append((n, None, names_b[n]))
+    keyed_a = {bare(p): p for p in files_a}
+    keyed_b = {bare(p): p for p in files_b}
+    common  = sorted(set(keyed_a) & set(keyed_b))
+    only_a  = sorted(set(keyed_a) - set(keyed_b))
+    only_b  = sorted(set(keyed_b) - set(keyed_a))
+
+    pairs = [(k, keyed_a[k], keyed_b[k]) for k in common]
+    for k in only_a:
+        pairs.append((k, keyed_a[k], None))
+    for k in only_b:
+        pairs.append((k, None, keyed_b[k]))
 
     w = max(len(n) for n, _, _ in pairs)
     w = max(w, 20)
