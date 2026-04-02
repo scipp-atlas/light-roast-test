@@ -4,7 +4,7 @@
 #source $ATLAS_LOCAL_ROOT_BASE/packageSetups/localSetup.sh "root 6.34.04-x86_64-el9-gcc13-opt"
 
 af_version="v4"
-nt_version="v4.1"
+nt_version="v4.2"
 
 N=5
 

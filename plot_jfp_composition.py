@@ -30,16 +30,17 @@ from abcd_utils import get_region_masks, LoosePrimeDefs
 # Configuration
 # ---------------------------------------------------------------------------
 
-NTUPLE_DIR = "/data/mhance/SUSY/ntuples/v4.1"
+NTUPLE_DIR = "/data/mhance/SUSY/ntuples/v4.2"
 OUTPUT_DIR = "jfp_composition_plots"
 
 PROCESSES  = ['Znunu', 'Wtaunu', 'Wmunu', 'Wenu']
 TRUTH_CATS = ['JFP', 'Other']
 
-# Photon ID categories: Tight ID vs LoosePrime4-passing-but-not-Tight
+# Photon ID categories
 ID_CATS = {
     'Tight': 'Tight ID',
     'LP4':   'LoosePrime4 (not Tight)',
+    'Loose': 'Loose (not Tight)',
 }
 
 # Stacking order: all JFP (bottom group) then all Other (top group)
@@ -150,7 +151,8 @@ NEEDED_BRANCHES = [
     'mTGammaMet', 'dPhiGammaMet', 'dPhiGammaJ1', 'nTau20_veryloose', 'met_signif',
 ]
 
-LP4_MASK_BIT = LoosePrimeDefs['LoosePrime4']
+LP4_MASK_BIT   = LoosePrimeDefs['LoosePrime4']
+LOOSE_MASK_BIT = LoosePrimeDefs['Loose']
 
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 
@@ -234,13 +236,15 @@ def accumulate(run2):
             data['weight_jvt_effSF']
         )
 
-        baseline = data['ph_select_baseline'] == 1
-        is_tight = data['ph_select_tightID']  == 1
-        is_lp4   = (data['ph_isEM'] & LP4_MASK_BIT) == 0
+        baseline  = data['ph_select_baseline'] == 1
+        is_tight  = data['ph_select_tightID']  == 1
+        is_lp4    = (data['ph_isEM'] & LP4_MASK_BIT)   == 0
+        is_loose  = (data['ph_isEM'] & LOOSE_MASK_BIT) == 0
 
         id_masks = {
             'Tight': baseline &  is_tight,
             'LP4':   baseline & ~is_tight & is_lp4,
+            'Loose': baseline & ~is_tight & is_loose,
         }
 
         truth_masks = {

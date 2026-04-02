@@ -31,7 +31,7 @@ from abcd_utils import (
 # Configuration
 # ---------------------------------------------------------------------------
 
-NTUPLE_DIR = "/data/mhance/SUSY/ntuples/v4"
+NTUPLE_DIR = "/data/mhance/SUSY/ntuples/v4.2"
 OUTPUT_DIR = "abcd_iso_plots"
 
 VARIABLES = ['ph_topoetcone40', 'ph_topoetcone20', 'ph_ptcone20']
@@ -84,6 +84,7 @@ NEEDED_BRANCHES = (
         'weight_ftag_effSF_GN2v01_Continuous', 'weight_jvt_effSF',
         'met_met', 'jet_cleanTightBad_prod', 'j1_pt', 'ph_pt',
         'mindPhiJetMet', 'nBTagJets', 'nElectrons', 'nMuons',
+        'nPhotons_baseline', 'nPhotons_skims', 'nPhotons_baseline_noOR',
         'mTGammaMet', 'dPhiGammaMet', 'nTau20_veryloose', 'met_signif',
     ]
 )
@@ -268,9 +269,9 @@ def make_jfp_comparison_plot(hists, sumw2, sel_key, var, run_era_label, run_era_
     ax_ratio = fig.add_subplot(gs[1], sharex=ax_main)
 
     def jfp_counts(h, s2, id_crit):
-        """JFP + Other counts and sumw2, combined."""
-        counts = h[sel_key][id_crit][var]['JFP'] + h[sel_key][id_crit][var]['Other']
-        sw2    = s2[sel_key][id_crit][var]['JFP'] + s2[sel_key][id_crit][var]['Other']
+        """JFP-only counts and sumw2."""
+        counts = h[sel_key][id_crit][var]['JFP']
+        sw2    = s2[sel_key][id_crit][var]['JFP']
         return counts, sw2
 
     # Pre-compute Tight density for ratio panel
