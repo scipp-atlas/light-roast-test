@@ -138,7 +138,7 @@ def get_region_masks(data):
 
     SR_0L_mT_hgh_loose = PS_0L & (
         (data['mTGammaMet']       >  115*1000.) &
-        (data['met_signif']       >    8      ) &
+        (data['met_signif']       >   11      ) &
         (data['dPhiGammaMet']     <  1.0      )
     )
 

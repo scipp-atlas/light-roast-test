@@ -45,6 +45,10 @@ TRUTH_CATS = ['prompt', 'EFP', 'JFP', 'Other', 'JFP+Other']
 LP_WPS     = ['LoosePrime4', 'Loose']
 ERAS       = ['Run2', 'Run3']
 
+# Fine-grained pT histogram for weighted-median computation (2 GeV bins, 10–200 GeV).
+PT_HIST_EDGES  = np.arange(10., 202., 2.)   # 96 edges → 95 bins
+N_PT_HIST_BINS = len(PT_HIST_EDGES) - 1     # 95
+
 # pT bins: (label, lo_GeV, hi_GeV)  hi_GeV=None means no upper bound.
 PT_BINS = [
     ('10-15',  10.,  15.),
@@ -118,7 +122,8 @@ def accumulate(regions):
       acc[region_key][era][lp][proc][truth][conv][eta][pt][abcd] = {'sw', 'sw2', 'n'}
     """
     def _leaf():
-        return {'sw': 0.0, 'sw2': 0.0, 'n': 0, 'sw_pt': 0.0}
+        return {'sw': 0.0, 'sw2': 0.0, 'n': 0, 'sw_pt': 0.0,
+                'sw_pthist': [0.0] * N_PT_HIST_BINS}
 
     acc = defaultdict(lambda: defaultdict(lambda: defaultdict(
           lambda: defaultdict(lambda: defaultdict(
@@ -216,11 +221,13 @@ def accumulate(regions):
                                     sel = base & amask
                                     if not sel.any():
                                         continue
-                                    w     = totalweight[sel]
-                                    sw    = float(w.sum())
-                                    sw2   = float((w ** 2).sum())
-                                    n     = int(sel.sum())
-                                    sw_pt = float((w * pt[sel] / 1e3).sum())  # GeV
+                                    w       = totalweight[sel]
+                                    sw      = float(w.sum())
+                                    sw2     = float((w ** 2).sum())
+                                    n       = int(sel.sum())
+                                    sw_pt   = float((w * pt[sel] / 1e3).sum())  # GeV
+                                    pthist, _ = np.histogram(
+                                        pt[sel] / 1e3, bins=PT_HIST_EDGES, weights=w)
                                     for bucket in (
                                         acc[reg_key][era][lp][proc][truth][conv_label][eta_label][pt_label][b],
                                         acc[reg_key][era][lp]['inclusive'][truth][conv_label][eta_label][pt_label][b],
@@ -229,6 +236,9 @@ def accumulate(regions):
                                         bucket['sw2']   += sw2
                                         bucket['n']     += n
                                         bucket['sw_pt'] += sw_pt
+                                        h = bucket['sw_pthist']
+                                        for i, v in enumerate(pthist):
+                                            h[i] += float(v)
 
     return acc
 
@@ -266,11 +276,41 @@ def rp_latex(bins):
 # pT correction helpers
 # ---------------------------------------------------------------------------
 
-def avg_pt_val(bins):
-    """Weighted average pT (GeV) summed over all ABCD quadrants."""
-    sw    = sum(bins[b]['sw']    for b in ('TT', 'TL', 'LT', 'LL'))
-    sw_pt = sum(bins[b]['sw_pt'] for b in ('TT', 'TL', 'LT', 'LL'))
-    return sw_pt / sw if sw > 0 else float('nan')
+_PT_QUADRANTS_NONTIGHT    = ('LT', 'LL')   # non-tight ID sideband
+_PT_QUADRANTS_NONISOLATED = ('TL', 'LL')   # non-isolated sideband
+
+
+def weighted_rpfit_val(bins, fit_lo, fit_hi, quadrants=_PT_QUADRANTS_NONTIGHT):
+    """Weighted average of R'_fit(pT) over photons in the specified ABCD quadrants.
+
+    For each histogram bin (center pT), evaluates the appropriate linear fit
+    (lo if pT <= SPLIT_PT, hi otherwise) and weights by the bin's summed weight:
+        <R'_fit(pT)>_w = Σ_i [h_i * R'_fit(center_i)] / Σ_i [h_i]
+    This correctly handles photons straddling the lo/hi regime boundary, unlike
+    evaluating a single fit at a single central pT.
+    Returns nan if the histogram is empty or all relevant fit regimes are unavailable.
+    """
+    combined = np.zeros(N_PT_HIST_BINS)
+    for b in quadrants:
+        src = bins[b].get('sw_pthist')
+        if src:
+            combined += np.array(src)
+    total = combined.sum()
+    if total <= 0:
+        return float('nan')
+
+    centers   = 0.5 * (PT_HIST_EDGES[:-1] + PT_HIST_EDGES[1:])
+    lo_mask   = centers <= SPLIT_PT
+    rpfit     = np.full(N_PT_HIST_BINS, float('nan'))
+    if fit_lo is not None:
+        rpfit[lo_mask]  = fit_lo[0] * centers[lo_mask]  + fit_lo[1]
+    if fit_hi is not None:
+        rpfit[~lo_mask] = fit_hi[0] * centers[~lo_mask] + fit_hi[1]
+
+    valid = ~np.isnan(rpfit) & (combined > 0)
+    if not valid.any():
+        return float('nan')
+    return float((combined[valid] * rpfit[valid]).sum() / combined[valid].sum())
 
 
 def _fit_pts(pts):
@@ -282,13 +322,15 @@ def _fit_pts(pts):
     return tuple(np.polyfit(xs, ys, 1))
 
 
-def compute_presel_fits(acc, truth, combine_eras):
+def compute_presel_fits(acc, truth, combine_eras, quadrants=_PT_QUADRANTS_NONTIGHT):
     """Linear R'(pT) fits in the preselection region per (era_key, lp).
 
-    Returns dict: (era_key, lp) → {'lo': (slope, intercept) or None,
-                                    'hi': (slope, intercept) or None,
-                                    'ref_pt': float (GeV)}
+    Returns dict: (era_key, lp) → {'lo':       (slope, intercept) or None,
+                                    'hi':       (slope, intercept) or None,
+                                    'ref_rpfit': float — weighted avg R'_fit(pT)
+                                                 over the presel inclusive bin}
     era_key is None when combine_eras=True, otherwise the era string.
+    quadrants controls which ABCD quadrants are used for the pT histogram.
     """
     era_groups = [(None, ERAS)] if combine_eras else [(era, [era]) for era in ERAS]
     fits = {}
@@ -304,14 +346,16 @@ def compute_presel_fits(acc, truth, combine_eras):
                 if not math.isnan(rv):
                     (pts_lo if xc <= SPLIT_PT else pts_hi).append((xc, rv))
 
+            fit_lo = _fit_pts(pts_lo)
+            fit_hi = _fit_pts(pts_hi)
             ref_bins = merge_bins([
                 acc['Preselection/0L'][era][lp]['inclusive'][truth]['incl']['incl']['incl']
                 for era in era_list
             ])
             fits[(era_key, lp)] = {
-                'lo':     _fit_pts(pts_lo),
-                'hi':     _fit_pts(pts_hi),
-                'ref_pt': avg_pt_val(ref_bins),
+                'lo':        fit_lo,
+                'hi':        fit_hi,
+                'ref_rpfit': weighted_rpfit_val(ref_bins, fit_lo, fit_hi, quadrants),
             }
     return fits
 
@@ -324,31 +368,148 @@ def _eval_fit(pt, fit_lo, fit_hi):
     return fit[0] * pt + fit[1]
 
 
-def get_correction_fn(acc, truth, combine_eras):
-    """Return correction_fn(era_label, lp, bins) → float multiplicative factor.
+def get_correction_fn(acc, truth, combine_eras, quadrants=_PT_QUADRANTS_NONTIGHT,
+                      log=None):
+    """Return correction_fn(era_label, lp, bins, label='') → float multiplicative factor.
 
-    Corrects R' for the difference in average pT between the given bins and the
-    preselection reference:  correction = R'_fit(ref_pt) / R'_fit(avg_pt_bins).
+    Corrects R' for pT dependence by comparing the weighted average of R'_fit(pT)
+    over each photon's pT to the same quantity in the preselection reference:
+        correction = <R'_fit(pT)>_presel / <R'_fit(pT)>_bin
+    where the average is taken over the pT histogram of the specified quadrants.
+    This correctly handles photons that straddle the lo/hi fit regime boundary.
     Returns 1.0 when a correction cannot be computed.
+    If log is an open file handle, each correction evaluation is written to it.
     """
-    presel_fits = compute_presel_fits(acc, truth, combine_eras)
+    presel_fits = compute_presel_fits(acc, truth, combine_eras, quadrants)
 
-    def correction_fn(era_label, lp, bins):
-        era_key = None if combine_eras else era_label
-        entry   = presel_fits.get((era_key, lp))
+    def correction_fn(era_label, lp, bins, label=''):
+        era_key   = None if combine_eras else era_label
+        entry     = presel_fits.get((era_key, lp))
         if entry is None:
             return 1.0
-        fit_lo, fit_hi, ref_pt = entry['lo'], entry['hi'], entry['ref_pt']
-        avg_pt = avg_pt_val(bins)
-        if math.isnan(avg_pt) or math.isnan(ref_pt):
+        fit_lo, fit_hi, ref_rpfit = entry['lo'], entry['hi'], entry['ref_rpfit']
+        bin_rpfit = weighted_rpfit_val(bins, fit_lo, fit_hi, quadrants)
+        if math.isnan(bin_rpfit) or math.isnan(ref_rpfit) or bin_rpfit <= 0:
+            if log:
+                log.write(f'  [{label}]  weighted_rpfit=nan — correction skipped (→ 1.0)\n')
             return 1.0
-        rp_ref = _eval_fit(ref_pt, fit_lo, fit_hi)
-        rp_avg = _eval_fit(avg_pt, fit_lo, fit_hi)
-        if math.isnan(rp_ref) or math.isnan(rp_avg) or rp_avg <= 0:
-            return 1.0
-        return rp_ref / rp_avg
+        factor = ref_rpfit / bin_rpfit
+        if log:
+            lo_str = f'{fit_lo[0]:+.6f}*pT{fit_lo[1]:+.6f}' if fit_lo else 'n/a'
+            hi_str = f'{fit_hi[0]:+.6f}*pT{fit_hi[1]:+.6f}' if fit_hi else 'n/a'
+            log.write(
+                f'  [{label}]\n'
+                f'    fit (lo, pT<={SPLIT_PT:.0f}) = {lo_str}\n'
+                f'    fit (hi, pT> {SPLIT_PT:.0f}) = {hi_str}\n'
+                f'    <R\'_fit(pT)>_presel = {ref_rpfit:.6f}\n'
+                f'    <R\'_fit(pT)>_bin   = {bin_rpfit:.6f}\n'
+                f'    correction         = {ref_rpfit:.6f} / {bin_rpfit:.6f} = {factor:.6f}\n'
+            )
+        return factor
 
     return correction_fn
+
+
+def write_ptcorr_log(acc, truth, combine_eras, quadrants, log_path):
+    """Write a self-contained pT correction log to log_path.
+
+    Section 1: fit setup — the preselection R'(pT) points, linear fits, and
+               the reference <R'_fit(pT)>_w for the presel inclusive bin.
+    Section 2: fit evaluation table — R'_fit(pT) at a grid of pT values,
+               for reference when reading per-call entries in section 3.
+    Section 3: per-call log — appended as corrections are evaluated.
+    """
+    era_groups = [(None, ERAS)] if combine_eras else [(era, [era]) for era in ERAS]
+    quad_label = '+'.join(quadrants)
+
+    presel_fits = compute_presel_fits(acc, truth, combine_eras, quadrants)
+
+    with open(log_path, 'w') as f:
+        f.write('=' * 72 + '\n')
+        f.write('pT Correction Log\n')
+        f.write(f'  truth        : {truth}\n')
+        f.write(f'  combine_eras : {combine_eras}\n')
+        f.write(f'  pT quadrants : {quad_label}\n')
+        f.write(f'  split pT     : {SPLIT_PT:.0f} GeV  (separate fits below/above)\n')
+        f.write('  method       : correction = <R\'_fit(pT)>_presel / <R\'_fit(pT)>_bin\n')
+        f.write('                 where <R\'_fit(pT)>_w = weighted avg over pT histogram\n')
+        f.write('=' * 72 + '\n\n')
+
+        f.write('SECTION 1: Preselection fits\n')
+        f.write('  Source: Preselection/0L, inclusive proc/eta/conv, all pT bins\n')
+        f.write('  Method: linear fit R\'(pT) = slope * pT + intercept\n\n')
+
+        for era_key, era_list in era_groups:
+            era_str = 'Run2+3' if combine_eras else era_key
+            for lp in LP_WPS:
+                entry = presel_fits.get((era_key, lp))
+                if entry is None:
+                    continue
+                fit_lo, fit_hi, ref_rpfit = entry['lo'], entry['hi'], entry['ref_rpfit']
+
+                f.write(f'  ({era_str}, {lp})\n')
+                f.write(f'  {"─" * 60}\n')
+
+                for regime_tag, regime_label in [('lo', f'pT <= {SPLIT_PT:.0f} GeV'),
+                                                  ('hi', f'pT >  {SPLIT_PT:.0f} GeV')]:
+                    fit = fit_lo if regime_tag == 'lo' else fit_hi
+                    f.write(f'  Regime: {regime_label}\n')
+                    f.write(f'  Input points (pT bin center, measured R\'):\n')
+                    for xl, xc in zip(PT_LABELS, PT_CENTERS):
+                        if (regime_tag == 'lo') != (xc <= SPLIT_PT) or xl == 'incl':
+                            continue
+                        bins = merge_bins([
+                            acc['Preselection/0L'][era][lp]['inclusive'][truth]['incl']['incl'][xl]
+                            for era in era_list
+                        ])
+                        rv, re = rp_val(bins)
+                        if not math.isnan(rv):
+                            f.write(f'    pT bin {xl:>6}  center={xc:5.1f} GeV'
+                                    f'  R\'={rv:.5f} ± {re:.5f}\n')
+                        else:
+                            f.write(f'    pT bin {xl:>6}  center={xc:5.1f} GeV  R\'=---\n')
+                    if fit is not None:
+                        f.write(f'  Fit: R\'(pT) = {fit[0]:+.6f} * pT + {fit[1]:+.6f}\n')
+                    else:
+                        f.write(f'  Fit: insufficient points — not available\n')
+                    f.write('\n')
+
+                f.write(f'  Reference <R\'_fit(pT)>_w  (presel incl bin, quadrants={quad_label}):\n')
+                f.write(f'    <R\'_fit(pT)>_presel = {ref_rpfit:.6f}\n')
+                f.write(f'    (weighted avg of R\'_fit evaluated at each photon\'s pT)\n')
+                f.write('\n')
+
+        f.write('=' * 72 + '\n\n')
+        f.write('SECTION 2: Fit evaluation table\n')
+        f.write('  R\'_fit(pT) at selected pT values, for both regimes.\n')
+        f.write('  Use this to understand what R\'_fit contributes at a given pT.\n\n')
+
+        probe_pts = [10., 12.5, 15., 17.5, 20., 22.5, 25., 27.5, 30., 35.,
+                     40., 45., 50., 60., 70., 80., 90., 100.]
+
+        for era_key, era_list in era_groups:
+            era_str = 'Run2+3' if combine_eras else era_key
+            for lp in LP_WPS:
+                entry = presel_fits.get((era_key, lp))
+                if entry is None:
+                    continue
+                fit_lo, fit_hi, ref_rpfit = entry['lo'], entry['hi'], entry['ref_rpfit']
+
+                f.write(f'  ({era_str}, {lp})  <R\'_fit(pT)>_presel = {ref_rpfit:.5f}\n')
+                f.write(f'  {"pT (GeV)":>10}  {"regime":>6}  {"R\'_fit(pT)":>12}\n')
+                f.write(f'  {"─" * 34}\n')
+                for pt in probe_pts:
+                    regime = 'lo' if pt <= SPLIT_PT else 'hi'
+                    rpval  = _eval_fit(pt, fit_lo, fit_hi)
+                    rpstr  = f'{rpval:.5f}' if not math.isnan(rpval) else '       ---'
+                    f.write(f'  {pt:>10.1f}  {regime:>6}  {rpstr:>12}\n')
+                f.write('\n')
+
+        f.write('=' * 72 + '\n')
+        f.write('SECTION 3: Per-call correction log\n')
+        f.write('  Each R\' evaluation that used a correction is listed below.\n')
+        f.write('  correction = <R\'_fit(pT)>_presel / <R\'_fit(pT)>_bin\n')
+        f.write('=' * 72 + '\n\n')
 
 
 # ---------------------------------------------------------------------------
@@ -548,13 +709,20 @@ def build_variables(truth):
 # ---------------------------------------------------------------------------
 
 def merge_bins(bins_list):
-    """Sum sw, sw2, and sw_pt across a list of bins dicts (each with TT/TL/LT/LL keys)."""
-    merged = {b: {'sw': 0., 'sw2': 0., 'sw_pt': 0.} for b in ('TT', 'TL', 'LT', 'LL')}
+    """Sum sw, sw2, sw_pt, and sw_pthist across a list of bins dicts."""
+    merged = {b: {'sw': 0., 'sw2': 0., 'sw_pt': 0.,
+                  'sw_pthist': [0.] * N_PT_HIST_BINS}
+              for b in ('TT', 'TL', 'LT', 'LL')}
     for bins in bins_list:
         for b in ('TT', 'TL', 'LT', 'LL'):
             merged[b]['sw']    += bins[b]['sw']
             merged[b]['sw2']   += bins[b]['sw2']
             merged[b]['sw_pt'] += bins[b].get('sw_pt', 0.)
+            src = bins[b].get('sw_pthist')
+            if src:
+                h = merged[b]['sw_pthist']
+                for i, v in enumerate(src):
+                    h[i] += v
     return merged
 
 
@@ -654,7 +822,8 @@ def make_plot(acc, var_tag, x_labels, xlabel, get_bins_fn, x_coords=None, subtit
             sty = SERIES_STYLES_COMBINED[lp]
             for j, xl in enumerate(x_labels):
                 bins = merge_bins([get_bins_fn(acc, era, lp, xl) for era in ERAS])
-                rv, re = _rp_corrected(bins, correction_fn, None, lp)
+                rv, re = _rp_corrected(bins, correction_fn, None, lp,
+                                       label=f'plot/{var_tag}/{xl}/{lp}/Run2+3')
                 if not math.isnan(rv):
                     if y_max is not None and rv > y_max:
                         off_scale.append((xs[j] + jitter[idx], sty['color']))
@@ -677,7 +846,8 @@ def make_plot(acc, var_tag, x_labels, xlabel, get_bins_fn, x_coords=None, subtit
                 sty = SERIES_STYLES[(lp, era)]
                 for j, xl in enumerate(x_labels):
                     bins = get_bins_fn(acc, era, lp, xl)
-                    rv, re = _rp_corrected(bins, correction_fn, era, lp)
+                    rv, re = _rp_corrected(bins, correction_fn, era, lp,
+                                           label=f'plot/{var_tag}/{xl}/{lp}/{era}')
                     if not math.isnan(rv):
                         if y_max is not None and rv > y_max:
                             off_scale.append((xs[j] + jitter[idx], sty['color']))
@@ -797,13 +967,150 @@ def _get_bins(acc, lp, era_label, xl, get_bins_fn, combine_eras):
     return get_bins_fn(acc, era_label, lp, xl)
 
 
-def _rp_corrected(bins, correction_fn, era_label, lp):
+def _rp_corrected(bins, correction_fn, era_label, lp, label=''):
     """Return (rp, err) with optional multiplicative pT correction applied."""
     rp, err = rp_val(bins)
     if correction_fn is None or math.isnan(rp):
         return rp, err
-    c = correction_fn(era_label, lp, bins)
+    c = correction_fn(era_label, lp, bins, label)
     return rp * c, err * c
+
+
+# Single-dimension variations to probe for R' systematics.
+# Each entry: (label, region_key, eta_lbl, conv_lbl, proc)
+# Only one dimension is non-nominal at a time.
+# Region nominal is Preselection/0L; process variations limited to Wtaunu / Znunu.
+_SYST_VARIATIONS = [
+    ('eta=barrel',        'Preselection/0L',    'barrel',      'incl',        'inclusive'),
+    ('eta=endcap',        'Preselection/0L',    'endcap',      'incl',        'inclusive'),
+    ('conv=unconverted',  'Preselection/0L',    'incl',        'unconverted', 'inclusive'),
+    ('conv=converted',    'Preselection/0L',    'incl',        'converted',   'inclusive'),
+    ('proc=Wtaunu',       'Preselection/0L',    'incl',        'incl',        'Wtaunu'),
+    ('proc=Znunu',        'Preselection/0L',    'incl',        'incl',        'Znunu'),
+    ('region=VR',         'VR/0L-mT-mid',       'incl',        'incl',        'inclusive'),
+    ('region=SR-low-l',   'SR/0L-mT-low-loose', 'incl',        'incl',        'inclusive'),
+    ('region=SR-mid-l',   'SR/0L-mT-mid-loose', 'incl',        'incl',        'inclusive'),
+    ('region=SR-hgh-l',   'SR/0L-mT-hgh-loose', 'incl',        'incl',        'inclusive'),
+]
+
+
+def compute_syst(acc, truth, combine_eras, correction_fn=None):
+    """Find max up/down R' deviations from nominal using single-dimension variations.
+
+    Nominal = Preselection/0L, inclusive pT/eta/conv/proc.
+    Checks each variation in _SYST_VARIATIONS independently (one dimension at a time).
+
+    Returns dict: (era_key, lp) → {
+        'nominal':    (rp, err),
+        'variations': [(label, rp, err, delta), ...],  # all valid variations
+        'max_up':     (delta, rp, err, label),
+        'max_dn':     (delta, rp, err, label),
+    }
+    """
+    era_groups = [(None, ERAS)] if combine_eras else [(era, [era]) for era in ERAS]
+    results = {}
+    for era_key, era_list in era_groups:
+        era_label = None if combine_eras else era_key
+        for lp in LP_WPS:
+            nom_bins = merge_bins([
+                acc['Preselection/0L'][era][lp]['inclusive'][truth]['incl']['incl']['incl']
+                for era in era_list
+            ])
+            nom_rp, nom_err = _rp_corrected(nom_bins, correction_fn, era_label, lp,
+                                            label=f'syst/nominal/{lp}/{era_key}')
+
+            variations = []
+            best_up = (0.,  float('nan'), float('nan'), '—')
+            best_dn = (0.,  float('nan'), float('nan'), '—')
+
+            for var_label, reg_key, eta_lbl, conv_lbl, proc in _SYST_VARIATIONS:
+                bins = merge_bins([
+                    acc[reg_key][era][lp][proc][truth][conv_lbl][eta_lbl]['incl']
+                    for era in era_list
+                ])
+                rp, err = _rp_corrected(bins, correction_fn, era_label, lp,
+                                        label=f'syst/{var_label}/{lp}/{era_key}')
+                if math.isnan(rp) or math.isnan(nom_rp):
+                    continue
+                delta = rp - nom_rp
+                variations.append((var_label, rp, err, delta))
+                if math.isnan(best_up[1]) or delta > best_up[0]:
+                    best_up = (delta, rp, err, var_label)
+                if math.isnan(best_dn[1]) or delta < best_dn[0]:
+                    best_dn = (delta, rp, err, var_label)
+
+            results[(era_key, lp)] = {
+                'nominal':    (nom_rp, nom_err),
+                'variations': variations,
+                'max_up':     best_up,
+                'max_dn':     best_dn,
+            }
+    return results
+
+
+def print_syst_table(acc, truth, combine_eras, correction_fn=None, suffix=''):
+    """Print the R' systematic uncertainty table to the terminal."""
+    syst = compute_syst(acc, truth, combine_eras, correction_fn)
+    era_groups = [(None, ERAS)] if combine_eras else [(era, [era]) for era in ERAS]
+
+    tag = f'{truth}' + (f'_{suffix}' if suffix else '')
+    W = 92
+    print()
+    print('=' * W)
+    print(f"  R' systematic uncertainties  —  {tag}  —  preselection, incl pT")
+    print(f"  Nominal = incl eta / incl conv / inclusive proc")
+    print(f"  Variations: one dimension at a time (eta, conv, proc=Wtaunu/Znunu, region=VR/SR-loose)")
+    print('=' * W)
+
+    for era_key, _ in era_groups:
+        era_str = 'Run2+3' if combine_eras else era_key
+        print()
+        print(f'  Era: {era_str}')
+
+        for lp in LP_WPS:
+            entry = syst.get((era_key, lp))
+            if entry is None:
+                continue
+            nom_rp, nom_err   = entry['nominal']
+            up_delta, up_rp, up_err, up_lbl = entry['max_up']
+            dn_delta, dn_rp, dn_err, dn_lbl = entry['max_dn']
+
+            print()
+            print(f'  {lp}')
+            print(f'  {"─" * (W - 4)}')
+            hdr = f'  {"Variation":<22}  {"R\'":>10}  {"stat err":>10}  {"delta":>10}  {"delta (%)":>10}'
+            print(hdr)
+            print(f'  {"─" * (W - 4)}')
+
+            nom_str = f'{nom_rp:10.4f}' if not math.isnan(nom_rp) else f'{"---":>10}'
+            nom_err_str = f'{nom_err:10.4f}' if not math.isnan(nom_err) else f'{"---":>10}'
+            print(f'  {"nominal (incl)":<22}  {nom_str}  {nom_err_str}  {"":>10}  {"":>10}')
+
+            for var_label, rp, err, delta in entry['variations']:
+                rp_str    = f'{rp:10.4f}'  if not math.isnan(rp)    else f'{"---":>10}'
+                err_str   = f'{err:10.4f}' if not math.isnan(err)   else f'{"---":>10}'
+                sgn       = '+' if delta >= 0 else ''
+                delta_str = f'{sgn}{delta:9.4f}'
+                if not math.isnan(nom_rp) and nom_rp != 0:
+                    pct = 100. * delta / nom_rp
+                    pct_str = f'{sgn}{pct:8.2f}%'
+                else:
+                    pct_str = f'{"---":>10}'
+                marker = ' <-- max up' if var_label == up_lbl else (
+                         ' <-- max dn' if var_label == dn_lbl else '')
+                print(f'  {var_label:<22}  {rp_str}  {err_str}  {delta_str}  {pct_str}{marker}')
+
+            print(f'  {"─" * (W - 4)}')
+            if not math.isnan(up_rp) and not math.isnan(dn_rp) and not math.isnan(nom_rp) and nom_rp != 0:
+                pct_up = 100. * up_delta / nom_rp
+                pct_dn = 100. * dn_delta / nom_rp
+                nom_s  = f'{nom_rp:.4f}'
+                print(f'  Nominal {nom_s}  syst +{up_delta:.4f} / {dn_delta:.4f}'
+                      f'  (+{pct_up:.2f}% / {pct_dn:.2f}%)')
+
+    print()
+    print('=' * W)
+    print()
 
 
 def print_table_text(acc, var_tag, x_labels, xlabel, get_bins_fn,
@@ -826,11 +1133,13 @@ def print_table_text(acc, var_tag, x_labels, xlabel, get_bins_fn,
         cells = []
         for lp, era_label in series:
             bins = _get_bins(acc, lp, era_label, xl, get_bins_fn, combine_eras)
-            rp, err = _rp_corrected(bins, correction_fn, era_label, lp)
+            rp, err = _rp_corrected(bins, correction_fn, era_label, lp,
+                                    label=f'table/{var_tag}/{xl}/{lp}/{era_label}')
             if math.isnan(rp):
                 cells.append(f'{"      ---      ":^{col_w}}')
             else:
-                cells.append(f'{f"{rp:6.3f} \u00b1 {err:5.3f}":^{col_w}}')
+                val_str = f"{rp:6.3f} \u00b1 {err:5.3f}"
+                cells.append(f'{val_str:^{col_w}}')
         print(f'{xl:>{row_w}}  {"  ".join(cells)}')
     print(sep)
 
@@ -865,7 +1174,8 @@ def write_table_tex(acc, var_tag, x_labels, xlabel, get_bins_fn,
             cells = []
             for lp, era_label in series:
                 bins = _get_bins(acc, lp, era_label, xl, get_bins_fn, combine_eras)
-                rp, err = _rp_corrected(bins, correction_fn, era_label, lp)
+                rp, err = _rp_corrected(bins, correction_fn, era_label, lp,
+                                        label=f'tex/{var_tag}/{xl}/{lp}/{era_label}')
                 if math.isnan(rp):
                     cells.append(r'$\text{---}$')
                 else:
@@ -911,9 +1221,21 @@ if __name__ == '__main__':
         help=('Also produce pT-corrected plots and tables.  R\' values are rescaled by '
               'R\'_fit(<pT>_presel) / R\'_fit(<pT>_bin) to remove the pT dependence '
               'seen across regions.  Corrected outputs get a "_ptcorr" filename suffix.'))
+    plot_grp.add_argument(
+        '--pt-avg-nonisolated', action='store_true',
+        help=('When computing pT corrections, base the average pT on the non-isolated '
+              'sideband (TL+LL quadrants) instead of the default non-tight sideband '
+              '(LT+LL quadrants).'))
 
     # ---- table options -------------------------------------------------------
     tbl_grp = parser.add_argument_group('table options')
+    tbl_grp.add_argument(
+        '--syst', action='store_true',
+        help=("Print R' systematic uncertainty tables. For each WP and era, finds the "
+              "max up/down deviation from the nominal (presel, incl pT/eta/conv/proc) "
+              "by varying one dimension at a time: eta (barrel/endcap), conv "
+              "(unconverted/converted), and proc (Wtaunu/Znunu). Produced for both "
+              "uncorrected and pT-corrected R' (when --correct-pt is also set)."))
     tbl_grp.add_argument(
         '--tables', action='store_true',
         help="Print per-variable R' summary tables to terminal (mirrors the plots).")
@@ -967,7 +1289,21 @@ if __name__ == '__main__':
     acc = accumulate(DEFAULT_REGIONS)
 
     # pre-compute pT correction function once (only if needed)
-    corr_fn = get_correction_fn(acc, args.truth, args.combine_eras) if args.correct_pt else None
+    pt_quadrants = _PT_QUADRANTS_NONISOLATED if args.pt_avg_nonisolated else _PT_QUADRANTS_NONTIGHT
+    if args.correct_pt:
+        os.makedirs(OUTPUT_DIR, exist_ok=True)
+        era_tag  = 'Run2p3' if args.combine_eras else 'byera'
+        log_path = os.path.join(OUTPUT_DIR, f'ptcorr_log_{args.truth}_{era_tag}.txt')
+        _log_fh  = open(log_path, 'w')
+        write_ptcorr_log(acc, args.truth, args.combine_eras, pt_quadrants, log_path)
+        # re-open in append mode so per-call entries follow the setup sections
+        _log_fh.close()
+        _log_fh = open(log_path, 'a')
+        corr_fn  = get_correction_fn(acc, args.truth, args.combine_eras, pt_quadrants, log=_log_fh)
+        print(f'pT correction log: {log_path}')
+    else:
+        corr_fn = None
+        _log_fh = None
 
     # ---- plots, terminal summary tables, and/or latex table files ------------
     if not args.no_plots or args.tables or args.latex:
@@ -990,7 +1326,7 @@ if __name__ == '__main__':
                 if not args.no_plots:
                     make_plot(acc, var_tag, x_labels, xlabel, get_bins_fn, x_coords, subtitle,
                               truth=args.truth, y_max=args.y_max, combine_eras=args.combine_eras,
-                              fit_pt=args.fit_pt, correction_fn=corr_fn, suffix='ptcorr')
+                              fit_pt=False, correction_fn=corr_fn, suffix='ptcorr')
                 if args.tables:
                     print_table_text(acc, var_tag, x_labels, xlabel, get_bins_fn,
                                      truth=args.truth, subtitle=subtitle,
@@ -1002,7 +1338,17 @@ if __name__ == '__main__':
                                     combine_eras=args.combine_eras,
                                     correction_fn=corr_fn, suffix='ptcorr')
 
+    # ---- systematic uncertainty tables ---------------------------------------
+    if args.syst:
+        print_syst_table(acc, args.truth, args.combine_eras)
+        if args.correct_pt:
+            print_syst_table(acc, args.truth, args.combine_eras,
+                             correction_fn=corr_fn, suffix='ptcorr')
+
     # ---- full terminal breakdown tables --------------------------------------
     if args.fulltables:
         print_tables(acc, table_regions, table_truth, table_wps, table_processes,
                      table_eta, table_conv, latex=False)
+
+    if _log_fh is not None:
+        _log_fh.close()
