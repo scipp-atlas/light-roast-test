@@ -29,7 +29,7 @@ VARIABLES = [
 ]
 
 # Rows: (ID cat, era) combinations
-ID_CATS = [('Tight', 'Tight ID'), ('LP4', 'LoosePrime4')]
+ID_CATS = [('Tight', 'Tight ID'), ('LP4', 'LoosePrime4'), ('Loose', 'Loose')]
 ERAS    = [('Run2',  'Run 2'),    ('Run3', 'Run 3')]
 ROWS    = [(id_tag, id_label, era_tag, era_label)
            for id_tag, id_label in ID_CATS
@@ -69,6 +69,7 @@ CSS = """
                padding: 4px; line-height: 1.3; }
   .row-label.lp4 { background: #fde8cc; }   /* warm tint for LP4 rows */
   .row-label.tight { background: #d4e8fd; } /* cool tint for Tight rows */
+  .row-label.loose { background: #d6f0d6; } /* green tint for Loose rows */
   .corner { background: transparent; }
   .cell { background: white; border-radius: 6px;
           box-shadow: 0 1px 4px rgba(0,0,0,0.15); padding: 6px; }
@@ -136,7 +137,7 @@ for var_key, var_label in VARIABLES:
 
     # Data rows: one per (ID cat, era)
     for id_tag, id_label, era_tag, era_label in ROWS:
-        tint = 'tight' if id_tag == 'Tight' else 'lp4'
+        tint = {'Tight': 'tight', 'LP4': 'lp4', 'Loose': 'loose'}.get(id_tag, '')
         lines.append(f'<div class="row-label {tint}">{id_label}<br>{era_label}</div>')
         for reg_tag, _ in REGIONS:
             lines.append(img_tag(f'{reg_tag}_{var_key}_{id_tag}_{era_tag}.png'))
