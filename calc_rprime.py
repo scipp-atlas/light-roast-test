@@ -190,7 +190,7 @@ def collect_rprime_totals(loose_prime, run2, jfp_only=False):
 
 def _zero_abcd():
     """Zero-initialised per-bin accumulators for data and MC prompt."""
-    return {b: {"data": 0, "prompt_sw": 0.0, "prompt_se2": 0.0}
+    return {b: {"data_sw": 0.0, "data_se2": 0.0, "prompt_sw": 0.0, "prompt_se2": 0.0}
             for b in ("TT", "TL", "LT", "LL")}
 
 def collect_sf(loose_prime, run2):
@@ -233,11 +233,17 @@ def collect_sf(loose_prime, run2):
                 for b in ("TT", "TL", "LT", "LL"):
                     if is_sr and b == "TT":
                         continue  # blind SR TT — no data
-                    acc[key][b]["data"] += reg[b]["data"]
+                    _d = reg[b]["data"]
+                    _sw  = _d["sumweights"] if isinstance(_d, dict) else float(_d)
+                    _se2 = _d["staterr"]**2 if isinstance(_d, dict) else float(_d)
+                    acc[key][b]["data_sw"]  += _sw
+                    acc[key][b]["data_se2"] += _se2
                     if key in SR_MT_KEYS and b != "TT":
-                        acc[SR_COMBINED][b]["data"] += reg[b]["data"]
+                        acc[SR_COMBINED][b]["data_sw"]  += _sw
+                        acc[SR_COMBINED][b]["data_se2"] += _se2
                     if key in SR_MT_LOOSE_KEYS and b != "TT":
-                        acc[SR_COMBINED_LOOSE][b]["data"] += reg[b]["data"]
+                        acc[SR_COMBINED_LOOSE][b]["data_sw"]  += _sw
+                        acc[SR_COMBINED_LOOSE][b]["data_se2"] += _se2
             continue
 
         # ---- background MC files ----
@@ -274,9 +280,9 @@ def collect_sf(loose_prime, run2):
         # prompt-subtracted counts and their uncertainties
         n, e2 = {}, {}
         for b in ("TT", "TL", "LT", "LL"):
-            n[b]  = bins[b]["data"] - bins[b]["prompt_sw"]
-            # uncertainty: Poisson on data + MC prompt stat
-            e2[b] = bins[b]["data"] + bins[b]["prompt_se2"]
+            n[b]  = bins[b]["data_sw"] - bins[b]["prompt_sw"]
+            # uncertainty: weighted data stat + MC prompt stat
+            e2[b] = bins[b]["data_se2"] + bins[b]["prompt_se2"]
 
         denom = n["TL"] * n["LT"]
         if n["LL"] <= 0 or denom <= 0 or n["TT"] <= 0:
@@ -320,7 +326,8 @@ def collect_vr_comparison(loose_prime, run2, jfp_only=False):
       mc_tt_cat_e2: {"prompt","efp","jfp","other"} variance in TT
     """
     REG_TYPE, REG_NAME = "VR", "0L-mT-mid"
-    data_n       = {b: 0   for b in ("TT", "TL", "LT", "LL")}
+    data_sw      = {b: 0.0 for b in ("TT", "TL", "LT", "LL")}
+    data_se2     = {b: 0.0 for b in ("TT", "TL", "LT", "LL")}
     sub_sw       = {b: 0.0 for b in ("TT", "TL", "LT", "LL")}
     sub_se2      = {b: 0.0 for b in ("TT", "TL", "LT", "LL")}
     mc_tt_sw     = 0.0
@@ -348,7 +355,9 @@ def collect_vr_comparison(loose_prime, run2, jfp_only=False):
             except KeyError:
                 continue
             for b in ("TT", "TL", "LT", "LL"):
-                data_n[b] += reg[b]["data"]
+                _d = reg[b]["data"]
+                data_sw[b]  += _d["sumweights"] if isinstance(_d, dict) else float(_d)
+                data_se2[b] += _d["staterr"]**2 if isinstance(_d, dict) else float(_d)
             continue
 
         # ---- background MC files ----
@@ -383,7 +392,7 @@ def collect_vr_comparison(loose_prime, run2, jfp_only=False):
             mc_tt_cat[grp]    += bin_tt[raw_cat]["sumweights"]
             mc_tt_cat_e2[grp] += bin_tt[raw_cat]["staterr"]**2
 
-    return dict(data_n=data_n, sub_sw=sub_sw, sub_se2=sub_se2,
+    return dict(data_sw=data_sw, data_se2=data_se2, sub_sw=sub_sw, sub_se2=sub_se2,
                 mc_tt_sw=mc_tt_sw, mc_tt_se2=mc_tt_se2,
                 mc_tt_cat=mc_tt_cat, mc_tt_cat_e2=mc_tt_cat_e2)
 
@@ -404,7 +413,8 @@ def print_vr_data_comparison(loose_prime, rprime_results, run2, jfp_only=False):
     rp, rp_err = rprime_results.get(rk, (float("nan"), float("nan")))
 
     comp         = collect_vr_comparison(loose_prime, run2, jfp_only)
-    data_n       = comp["data_n"]
+    data_sw      = comp["data_sw"]
+    data_se2     = comp["data_se2"]
     sub_sw       = comp["sub_sw"]   # prompt+EFP (or +Other) MC subtraction
     sub_se2      = comp["sub_se2"]
     mc_tt        = comp["mc_tt_sw"]
@@ -416,8 +426,8 @@ def print_vr_data_comparison(loose_prime, rprime_results, run2, jfp_only=False):
     fake    = {}
     fake_e2 = {}
     for b in ("TL", "LT", "LL"):
-        fake[b]    = data_n[b] - sub_sw[b]
-        fake_e2[b] = data_n[b] + sub_se2[b]   # Poisson on data + MC stat
+        fake[b]    = data_sw[b] - sub_sw[b]
+        fake_e2[b] = data_se2[b] + sub_se2[b]  # weighted data stat + MC stat
 
     abcd_label = "JFP" if jfp_only else "JFP+Other"
     sub_label  = "prompt+EFP+Other" if jfp_only else "prompt+EFP"
@@ -470,13 +480,13 @@ def print_vr_data_comparison(loose_prime, rprime_results, run2, jfp_only=False):
     else:
         hybrid, hybrid_err = float("nan"), float("nan")
 
-    data_tt   = data_n["TT"]
-    data_tt_e = math.sqrt(data_tt) if data_tt > 0 else 0.0
+    data_tt   = data_sw["TT"]
+    data_tt_e = math.sqrt(data_se2["TT"]) if data_tt > 0 else 0.0
 
     # Scale factor: data / hybrid
     if not math.isnan(hybrid) and hybrid > 0:
         sf     = data_tt / hybrid
-        sf_err = sf * math.sqrt(data_tt_e**2 / data_tt**2 + (hybrid_err / hybrid)**2)
+        sf_err = sf * math.sqrt(data_tt_e**2 / max(data_tt, 1e-9)**2 + (hybrid_err / hybrid)**2)
     else:
         sf, sf_err = float("nan"), float("nan")
 

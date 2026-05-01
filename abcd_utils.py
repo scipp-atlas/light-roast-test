@@ -6,6 +6,32 @@ import os
 import math
 import json
 import glob
+import re
+
+_RUN2_YEARS = {2015, 2016, 2017, 2018}
+_RUN3_YEARS = {2022, 2023, 2024}
+
+def _parse_data_year(fname):
+    """Extract year from a data filename, supporting both data_2017 and data_17 forms."""
+    m = re.search(r'_data_(\d{2,4})_', fname)
+    if not m:
+        return None
+    y = int(m.group(1))
+    return y + 2000 if y < 100 else y
+
+def _is_run2(fp):
+    fname = os.path.basename(fp)
+    if "mc20" in fname:
+        return True
+    year = _parse_data_year(fname)
+    return year in _RUN2_YEARS if year is not None else False
+
+def _is_run3(fp):
+    fname = os.path.basename(fp)
+    if "mc23" in fname:
+        return True
+    year = _parse_data_year(fname)
+    return year in _RUN3_YEARS if year is not None else False
 
 # https://docs.google.com/document/d/1sF0uQq8MA08Dbmd2euJ9BSo1nGIrc78XAOjKQy_mimA/edit?tab=t.rq6d75o3ywqx
 LoosePrimeDefs = {
@@ -84,7 +110,7 @@ def getemptyresults():
                       'unclassified': {'nevents': 0,
                                        'sumweights': 0,
                                        'staterr': 0},
-                      'data': 0
+                      'data': {'nevents': 0, 'sumweights': 0.0, 'staterr': 0.0}
                      }
     return results
 
@@ -260,10 +286,19 @@ def ABCDresults(data, mask, isMC, ID="tightID", Iso="tightIso", LoosePrime="Loos
                 if results[b][t]['nevents'] > 0:
                     results[b][t]['staterr'] = np.sqrt((results[b][t]['sumweights']**2)/results[b][t]['nevents'])
         else:
-            results[b]['data'] = np.sum(mask & masks[b])
-            if results[b]['data'] < 100:
-                results[b]['runNumbers'] = data['runNumber'][mask & masks[b]]
-                results[b]['eventNumbers'] = data['eventNumber'][mask & masks[b]]
+            sel = mask & masks[b]
+            n = int(np.sum(sel))
+            if 'weight_ph_rprime' in data:
+                w    = data['weight_ph_rprime'][sel]
+                sw   = float(w.sum())
+                stat = float(np.sqrt((w**2).sum())) if n > 0 else 0.0
+            else:
+                sw   = float(n)
+                stat = float(np.sqrt(n)) if n > 0 else 0.0
+            results[b]['data'] = {'nevents': n, 'sumweights': sw, 'staterr': stat}
+            if n < 100:
+                results[b]['runNumbers']   = data['runNumber'][sel]
+                results[b]['eventNumbers'] = data['eventNumber'][sel]
 
     if results[b]['mc']['nevents'] != (results[b]['real']['nevents'] +
                                        results[b]['jfp']['nevents'] +
@@ -311,11 +346,8 @@ def getfakeestimate(regiontype="SR", regionname="0L-mT-low", ID="tightID", Iso="
         if "jj" in fp: continue
         if "N2" in fp: continue
 
-        isRun3 = ("mc23" in fp or "data_202" in fp)
-        isRun2 = ("mc20" in fp or "data_201" in fp)
-
-        if Run2 and not isRun2: continue
-        elif not Run2 and isRun2: continue
+        if Run2 and not _is_run2(fp): continue
+        elif not Run2 and not _is_run3(fp): continue
 
         data = load_json_file(fp)
 
@@ -325,7 +357,16 @@ def getfakeestimate(regiontype="SR", regionname="0L-mT-low", ID="tightID", Iso="
         region = data[regiontype][regionname]
 
         for b in ['TT', 'TL', 'LT', 'LL']:
-            totalresults[b]['data'] += region[b]["data"]
+            d = region[b]["data"]
+            if isinstance(d, dict):
+                totalresults[b]['data']['nevents']    += d['nevents']
+                totalresults[b]['data']['sumweights'] += d['sumweights']
+                totalresults[b]['data']['staterr']    += d['staterr']**2
+            else:
+                n = int(d)
+                totalresults[b]['data']['nevents']    += n
+                totalresults[b]['data']['sumweights'] += float(n)
+                totalresults[b]['data']['staterr']    += float(n)
 
             for t in ['real', 'jfp', 'efp', 'other', 'unclassified']:
                 for s in ["sumweights", "nevents"]:
@@ -338,6 +379,7 @@ def getfakeestimate(regiontype="SR", regionname="0L-mT-low", ID="tightID", Iso="
                 sample_max[b][1] = sample_tag
 
     for b in ['TT', 'TL', 'LT', 'LL']:
+        totalresults[b]['data']['staterr'] = np.sqrt(totalresults[b]['data']['staterr'])
         for t in ['real', 'jfp', 'efp', 'other', 'unclassified']:
             if "staterr" in totalresults[b][t]:
                 totalresults[b][t]["staterr"] = np.sqrt(totalresults[b][t]["staterr"])
@@ -362,21 +404,30 @@ def getsignalestimate(regiontype="SR", regionname="0L-mT-low", ID="tightID", Iso
     for fp in glob.glob(f"ABCD_results_{tag}/*{sample}*{ID}_{Iso}_{LoosePrime}.json"):
         data = load_json_file(fp)
 
-        isRun3 = ("mc23" in fp or "data_202" in fp)
-        isRun2 = ("mc20" in fp or "data_201" in fp)
-
-        if Run2 and not isRun2: continue
-        elif not Run2 and isRun2: continue
+        if Run2 and not _is_run2(fp): continue
+        elif not Run2 and not _is_run3(fp): continue
 
         region = data[regiontype][regionname]
 
         for b in ['TT', 'TL', 'LT', 'LL']:
-            signalresults[b]['data'] += region[b]["data"]
+            _d = region[b]["data"]
+            if isinstance(_d, dict):
+                signalresults[b]['data']['nevents']    += _d['nevents']
+                signalresults[b]['data']['sumweights'] += _d['sumweights']
+                signalresults[b]['data']['staterr']    += _d['staterr']**2
+            else:
+                n = int(_d)
+                signalresults[b]['data']['nevents']    += n
+                signalresults[b]['data']['sumweights'] += float(n)
+                signalresults[b]['data']['staterr']    += float(n)
             signalresults[b]['real']['sumweights'] += region[b]["real"]["sumweights"]
             signalresults[b]['jfp']['sumweights'] += region[b]["jfp"]["sumweights"]
             signalresults[b]['efp']['sumweights'] += region[b]["efp"]["sumweights"]
             signalresults[b]['other']['sumweights'] += region[b]["other"]["sumweights"]
             signalresults[b]['unclassified']['sumweights'] += region[b]["unclassified"]["sumweights"]
+
+    for b in ['TT', 'TL', 'LT', 'LL']:
+        signalresults[b]['data']['staterr'] = np.sqrt(signalresults[b]['data']['staterr'])
 
     return signalresults
 
@@ -389,7 +440,8 @@ def yieldsABCD(sresults, useMC=True):
         if useMC:
             N_all[b] = sresults[b]['real']['sumweights'] + sresults[b]['jfp']['sumweights'] + sresults[b]['efp']['sumweights'] + sresults[b]['other']['sumweights']
         else:
-            N_all[b] = sresults[b]['data']
+            d = sresults[b]['data']
+            N_all[b] = d['sumweights'] if isinstance(d, dict) else float(d)
 
     # prompt subtraction
     n_TT = (N_all['TT'] - sresults['TT']['real']['sumweights'] - sresults['TT']['efp']['sumweights'])
@@ -431,30 +483,40 @@ def printregion(regiontype="SR", region="0L-mT-low", Run2=True, LoosePrime="Loos
 
     separator = "-"*128
 
+    era = "Run 2" if Run2 else "Run 3"
+    title = f"{regiontype}-{region}  |  {era}  |  {LoosePrime}  |  tag={tag}"
+    outer_sep = "=" * 128
+
     IDs = ["tightID"]
     Isos = ["hybridCOIso"]
+    print(outer_sep)
+    print(title)
+    print("-" * len(title))
     if not debugoutput:
-        print(f"{regiontype}-{region}")
-        print("------------")
         print(f"      ID    Isolation :   JFP,MC   JFP,DD              {sigsamples[0]}   {sigsamples[1]}   {sigsamples[2]}   {sigsamples[3]}")
         print(separator)
 
     for ID in IDs:
         for Iso in Isos:
-            if debugoutput: print(f"Results for {ID}, {Iso}:\n")
+            if debugoutput: print(f"\nResults for {ID}, {Iso}:\n")
 
             totalresults, samples = getfakeestimate(regiontype, region, ID, Iso, LoosePrime, Run2, False, tag=tag)
 
             N = {}
             N_MC = {}
             N_JFP_MC = {}
-            if debugoutput: print(f"      Data       MC      Real      EFP    Other      JFP")
+            if debugoutput: print(f"      Data(n) Data(sw)       MC      Real      EFP    Other      JFP")
             for b in ['TT', 'TL', 'LT', 'LL']:
-                N[b] = totalresults[b]['data'] - totalresults[b]['real']['sumweights'] - totalresults[b]['efp']['sumweights']
+                _d = totalresults[b]['data']
+                _d_nevents  = _d['nevents']    if isinstance(_d, dict) else int(_d)
+                _d_sw       = _d['sumweights'] if isinstance(_d, dict) else float(_d)
+                N[b] = _d_sw - totalresults[b]['real']['sumweights'] - totalresults[b]['efp']['sumweights']
                 N_JFP_MC[b] = totalresults[b]['jfp']['sumweights'] + totalresults[b]['other']['sumweights']
                 N_MC[b] = N_JFP_MC[b] + totalresults[b]['real']['sumweights'] + totalresults[b]['efp']['sumweights']
                 if debugoutput:
-                    print(f"{b}: {totalresults[b]['data'] if b != 'TT' or (not blindTT) else 0:6d}   {N_MC[b]:6.1f}    {totalresults[b]['real']['sumweights']:6.1f}   {totalresults[b]['efp']['sumweights']:6.1f}   {totalresults[b]['other']['sumweights']:6.1f}   {totalresults[b]['jfp']['sumweights']:6.1f}")
+                    _show_n  = _d_nevents  if b != 'TT' or (not blindTT) else 0
+                    _show_sw = _d_sw       if b != 'TT' or (not blindTT) else 0.0
+                    print(f"{b}: {_show_n:8d} {_show_sw:8.1f}   {N_MC[b]:6.1f}    {totalresults[b]['real']['sumweights']:6.1f}   {totalresults[b]['efp']['sumweights']:6.1f}   {totalresults[b]['other']['sumweights']:6.1f}   {totalresults[b]['jfp']['sumweights']:6.1f}")
             if debugoutput: print('')
 
             N_TT_bkg_DDjfp, U_TT_bkg_DDjfp, den_LL, Rprime, dRprime = yieldsABCD(totalresults, False)
@@ -482,11 +544,13 @@ def printregion(regiontype="SR", region="0L-mT-low", Run2=True, LoosePrime="Loos
 
             if debugoutput:
                 if not blindTT:
-                    print(f"Total data in TT region is {totalresults['TT']['data']:.1f}.")
-                print(f"DD background prediction: {N_TT_bkg_real:5.1f} (real) + {N_TT_bkg_DDjfp:5.1f} (+/- {U_TT_bkg_DDjfp:.2f}) (jfp+other) + {N_TT_bkg_efp:.1f} (efp) + {N_TT_bkg_unclassified:.1f} (unclassified) = {N_TT_bkg_DD:.1f}")
-                print(f"MC background prediction: {N_TT_bkg_real:5.1f} (real) + {N_TT_bkg_MCjfp+N_TT_bkg_other:5.1f}             (jfp+other) + {N_TT_bkg_efp:.1f} (efp) + {N_TT_bkg_unclassified:.1f} (unclassified) = {N_TT_bkg_MC:.1f}")
-                print(f"MC background closure   : {N_TT_bkg_real:5.1f} (real) + {N_TT_bkg_DDMCjfp:5.1f}             (jfp+other) + {N_TT_bkg_efp:.1f} (efp) + {N_TT_bkg_unclassified:.1f} (unclassified) = {N_TT_bkg_DDMC:.1f}")
-                print(f"R': {Rprime:5.3f} +/- {dRprime:5.3f}")
+                    _tt_d = totalresults['TT']['data']
+                    _tt_sw = _tt_d['sumweights'] if isinstance(_tt_d, dict) else float(_tt_d)
+                    print(f"Total data in TT region is {_tt_sw:.1f}.")
+                print(f"DD background prediction: {N_TT_bkg_real:7.1f} (real) + {N_TT_bkg_DDjfp:7.1f} (+/- {U_TT_bkg_DDjfp:7.2f}) (jfp+other) + {N_TT_bkg_efp:.1f} (efp) + {N_TT_bkg_unclassified:.1f} (unclassified) = {N_TT_bkg_DD:.1f}")
+                print(f"MC background prediction: {N_TT_bkg_real:7.1f} (real) + {N_TT_bkg_MCjfp+N_TT_bkg_other:7.1f}               (jfp+other) + {N_TT_bkg_efp:.1f} (efp) + {N_TT_bkg_unclassified:.1f} (unclassified) = {N_TT_bkg_MC:.1f}")
+                print(f"MC background closure   : {N_TT_bkg_real:7.1f} (real) + {N_TT_bkg_DDMCjfp:7.1f}               (jfp+other) + {N_TT_bkg_efp:.1f} (efp) + {N_TT_bkg_unclassified:.1f} (unclassified) = {N_TT_bkg_DDMC:.1f}")
+                print(f"R': {Rprime:7.3f} +/- {dRprime:7.3f}")
 
             yields = {}
             yieldsstring = ""
@@ -500,6 +564,7 @@ def printregion(regiontype="SR", region="0L-mT-low", Run2=True, LoosePrime="Loos
                 print(f"{ID:10s} {Iso:11s}:   {N_TT_bkg_MCjfp+N_TT_bkg_other:6.1f}    {N_TT_bkg_DDjfp:5.1f} +/- {U_TT_bkg_DDjfp:4.1f}     {yieldsstring}")
             print(separator)
     print("")
+    print(outer_sep)
 
 
 def sampleABCD(sample, debug=False, ID="tightID", Iso="hybridIso", LoosePrime="LoosePrime4a",

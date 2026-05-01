@@ -55,8 +55,9 @@ def load_counts(results_dir):
                 for key in ("TT", "TL", "LT", "LL"):
                     if key in abcd:
                         val = abcd[key]
+                        _d  = val["data"]
                         counts[era][loose_id][region][subregion][key] += (
-                            val["data"] if isinstance(val, dict) else val
+                            _d["sumweights"] if isinstance(_d, dict) else float(_d)
                         )
     return counts
 

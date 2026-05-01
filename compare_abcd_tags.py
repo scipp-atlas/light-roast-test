@@ -200,11 +200,13 @@ def print_data_comparison(loose_prime, region, dir_a, dir_b, label_a, label_b,
         reg_b = load_region(path_b, region) if path_b else None
 
         for b in ABCD_BINS:
-            va = reg_a[b]["data"] if reg_a else None
-            vb = reg_b[b]["data"] if reg_b else None
+            _da = reg_a[b]["data"] if reg_a else None
+            _db = reg_b[b]["data"] if reg_b else None
+            va = (_da["sumweights"] if isinstance(_da, dict) else float(_da)) if _da is not None else None
+            vb = (_db["sumweights"] if isinstance(_db, dict) else float(_db)) if _db is not None else None
             label = f"{year} {b}"
-            va_s = f"{va:>10d}" if va is not None else f"{'---':>10}"
-            vb_s = f"{vb:>10d}" if vb is not None else f"{'---':>10}"
+            va_s = f"{va:>10.1f}" if va is not None else f"{'---':>10}"
+            vb_s = f"{vb:>10.1f}" if vb is not None else f"{'---':>10}"
             ratio_s = fmt_ratio(va, vb) if (va is not None and vb is not None) else "      ---"
             print(f"  {label:<20}  {va_s}  {vb_s}  {ratio_s}")
             if va is not None: total_a[b] += va
@@ -215,7 +217,7 @@ def print_data_comparison(loose_prime, region, dir_a, dir_b, label_a, label_b,
     print(sep_line(20))
     for b in ABCD_BINS:
         label = f"TOTAL {b}"
-        print(f"  {label:<20}  {total_a[b]:>10d}  {total_b[b]:>10d}  {fmt_ratio(total_a[b], total_b[b])}")
+        print(f"  {label:<20}  {total_a[b]:>10.1f}  {total_b[b]:>10.1f}  {fmt_ratio(total_a[b], total_b[b])}")
 
 # ---------------------------------------------------------------------------
 # Entry point

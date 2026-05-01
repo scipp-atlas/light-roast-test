@@ -69,7 +69,7 @@ def collect_yields(loose_prime, run2):
     all_region_keys = [f"{rt}/{rn}" for rt, rn in REGIONS] + \
                       [SR_COMBINED, SR_COMBINED_LOOSE]
 
-    data_n        = {k: {b: 0   for b in ("TT","TL","LT","LL")} for k in all_region_keys}
+    data_n        = {k: {b: 0.0 for b in ("TT","TL","LT","LL")} for k in all_region_keys}
     prompt_sw     = {k: _zero_bins() for k in all_region_keys}
     prompt_e2     = {k: _zero_bins() for k in all_region_keys}
     wtaunu_sw     = {k: _zero_bins() for k in all_region_keys}
@@ -109,11 +109,13 @@ def collect_yields(loose_prime, run2):
                 for b in ("TT", "TL", "LT", "LL"):
                     if is_sr and b == "TT":
                         continue  # blind SR TT — no data
-                    data_n[key][b] += reg[b]["data"]
+                    _d = reg[b]["data"]
+                    _sw = _d["sumweights"] if isinstance(_d, dict) else float(_d)
+                    data_n[key][b] += _sw
                     if key in SR_MT_KEYS and b != "TT":
-                        data_n[SR_COMBINED][b] += reg[b]["data"]
+                        data_n[SR_COMBINED][b] += _sw
                     if key in SR_MT_LOOSE_KEYS and b != "TT":
-                        data_n[SR_COMBINED_LOOSE][b] += reg[b]["data"]
+                        data_n[SR_COMBINED_LOOSE][b] += _sw
             continue
 
         # ---- background MC files ----
