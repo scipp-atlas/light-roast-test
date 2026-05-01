@@ -4,11 +4,11 @@
 #source $ATLAS_LOCAL_ROOT_BASE/packageSetups/localSetup.sh "root 6.34.04-x86_64-el9-gcc13-opt"
 
 af_version="v4"
-nt_version="v4.2"
+nt_version="v4.3"
 
 N=5
 
-#rm -rf /data/mhance/SUSY/ntuples/${nt_version}/processor
+rm /data/mhance/SUSY/ntuples/${nt_version}/processor/*
 
 fileprefix="PICOPROD_RAv4"
 
@@ -26,7 +26,7 @@ for inputfiles in ""; do #"_sig" "_mc" "_data"; do
     
         echo "Working on ${ds}"
 
-	#rm -f /data/mhance/SUSY/ntuples/${nt_version}/output_${ds}.root 
+	rm -f /data/mhance/SUSY/ntuples/${nt_version}/${fileprefix}_${ds}.root
 	mkdir -p /data/mhance/SUSY/ntuples/${nt_version}/campaigns
 	mv /data/mhance/SUSY/ntuples/${nt_version}/${fileprefix}_${ds}*.root /data/mhance/SUSY/ntuples/${nt_version}/campaigns
 	nfiles=$(/bin/ls -1 /data/mhance/SUSY/ntuples/${nt_version}/campaigns/${fileprefix}_${ds}*.root | grep .root | wc | awk {'print $1'})

@@ -152,9 +152,21 @@ def proc_tags_for_file(fname):
 # ---------------------------------------------------------------------------
 
 def accumulate(run2):
-    """Fill histograms for all (proc, truth_cat, var)."""
-    era_tag = 'Run2' if run2 else 'Run3'
-    mc_tag  = 'mc20' if run2 else 'mc23'
+    """Fill histograms for all (proc, truth_cat, var).
+
+    run2=True: Run 2 only (mc20).
+    run2=False: Run 3 only (mc23).
+    run2=None: Run 2+3 combined.
+    """
+    if run2 is True:
+        era_tag  = 'Run2'
+        mc_tags  = ('mc20',)
+    elif run2 is False:
+        era_tag  = 'Run3'
+        mc_tags  = ('mc23',)
+    else:
+        era_tag  = 'Run2p3'
+        mc_tags  = ('mc20', 'mc23')
 
     def _zeros(var):
         return np.zeros(len(BINS[var]) - 1)
@@ -170,10 +182,10 @@ def accumulate(run2):
 
     all_files = sorted(glob.glob(os.path.join(NTUPLE_DIR, '*.root')))
     bkg_files = [f for f in all_files
-                 if mc_tag in os.path.basename(f)
+                 if any(t in os.path.basename(f) for t in mc_tags)
                  and is_background_mc(os.path.basename(f))]
 
-    print(f'\nAccumulating {era_tag}: {len(bkg_files)} background MC files')
+    print(f'\nAccumulating {era_tag}: {len(bkg_files)} background MC files ({", ".join(mc_tags)})')
 
     for i, fp in enumerate(bkg_files, 1):
         fname = os.path.basename(fp)
@@ -331,11 +343,13 @@ def make_plot(hists, sumw2, proc_tag, proc_label, var,
 # ---------------------------------------------------------------------------
 
 if __name__ == '__main__':
-    for run2, era_tag, lumi_label in [
-        (True,  'Run2', r'$\sqrt{s}=13\ \mathrm{TeV},\ 140\ \mathrm{fb}^{-1}$'),
-        (False, 'Run3', r'$\sqrt{s}=13.6\ \mathrm{TeV},\ 160\ \mathrm{fb}^{-1}$'),
+    for run2, lumi_label in [
+        (True,  r'$\sqrt{s}=13\ \mathrm{TeV},\ 140\ \mathrm{fb}^{-1}$'),
+        (False, r'$\sqrt{s}=13.6\ \mathrm{TeV},\ 160\ \mathrm{fb}^{-1}$'),
+        (None,  r'$\sqrt{s}=13\text{--}13.6\ \mathrm{TeV},\ \mathrm{Run\ 2+3\ combined}$'),
     ]:
         hists, sumw2 = accumulate(run2)
+        era_tag = 'Run2' if run2 is True else ('Run3' if run2 is False else 'Run2p3')
 
         n_plots = 0
         for proc_tag, proc_label, _ in PROCESSES:

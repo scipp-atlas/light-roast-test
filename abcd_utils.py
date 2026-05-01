@@ -113,13 +113,13 @@ def get_region_masks(data):
 
     SR_0L_mT_mid = PS_0L & (
         (data['mTGammaMet']       >   50*1000.) &
-        (data['mTGammaMet']       <  115*1000.) &
+        (data['mTGammaMet']       <  100*1000.) &
         (data['met_signif']       >   21      ) &
         (data['dPhiGammaMet']     <  0.7      )
     )
 
     SR_0L_mT_hgh = PS_0L & (
-        (data['mTGammaMet']       >  115*1000.) &
+        (data['mTGammaMet']       >  100*1000.) &
         (data['met_signif']       >   19      ) &
         (data['dPhiGammaMet']     <  1.0      )
     )
@@ -131,13 +131,13 @@ def get_region_masks(data):
 
     SR_0L_mT_mid_loose = PS_0L & (
         (data['mTGammaMet']       >   50*1000.) &
-        (data['mTGammaMet']       <  115*1000.) &
+        (data['mTGammaMet']       <  100*1000.) &
         (data['met_signif']       >   14      ) &
         (data['dPhiGammaMet']     <  0.7      )
     )
 
     SR_0L_mT_hgh_loose = PS_0L & (
-        (data['mTGammaMet']       >  115*1000.) &
+        (data['mTGammaMet']       >  100*1000.) &
         (data['met_signif']       >   11      ) &
         (data['dPhiGammaMet']     <  1.0      )
     )

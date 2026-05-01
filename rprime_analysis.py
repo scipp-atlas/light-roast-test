@@ -410,6 +410,64 @@ def get_correction_fn(acc, truth, combine_eras, quadrants=_PT_QUADRANTS_NONTIGHT
     return correction_fn
 
 
+def get_correction_fn_v2(acc, truth, combine_eras, log=None):
+    """Return correction_fn(era_label, lp, bins, label='') → float multiplicative factor.
+
+    Per-photon pT correction: each photon in the A (LT), B (LL), and D (TL)
+    sidebands is assigned R'_fit(pT_i) from the preselection linear fit.
+    The corrected R' is:
+
+        R'_corrected = N_TT * Σ_{LL} w_i R'_fit(pT_i)
+                       ─────────────────────────────────────────────
+                       (Σ_{TL} w_i R'_fit(pT_i)) (Σ_{LT} w_i R'_fit(pT_i))
+
+    As a multiplicative factor applied to the measured R':
+
+        factor = <R'_fit(pT)>_LL / (<R'_fit(pT)>_TL * <R'_fit(pT)>_LT)
+
+    where each <R'_fit(pT)>_X is the pT-histogram-weighted average of the fit
+    evaluated at bin centres, taken over quadrant X of the target bin.
+    Returns 1.0 when a correction cannot be computed.
+    """
+    presel_fits = compute_presel_fits(acc, truth, combine_eras,
+                                      quadrants=_PT_QUADRANTS_NONTIGHT)
+
+    def correction_fn(era_label, lp, bins, label=''):
+        era_key = None if combine_eras else era_label
+        entry   = presel_fits.get((era_key, lp))
+        if entry is None:
+            return 1.0
+        fit_lo, fit_hi = entry['lo'], entry['hi']
+
+        avg_LL = weighted_rpfit_val(bins, fit_lo, fit_hi, ('LL',))
+        avg_TL = weighted_rpfit_val(bins, fit_lo, fit_hi, ('TL',))
+        avg_LT = weighted_rpfit_val(bins, fit_lo, fit_hi, ('LT',))
+
+        denom = avg_TL * avg_LT
+        if any(math.isnan(v) for v in (avg_LL, avg_TL, avg_LT)) or denom <= 0:
+            if log:
+                log.write(f'  [{label}]  v2: nan or zero denom — correction skipped (→ 1.0)\n')
+            return 1.0
+
+        factor = avg_LL / denom
+        if log:
+            lo_str = f'{fit_lo[0]:+.6f}*pT{fit_lo[1]:+.6f}' if fit_lo else 'n/a'
+            hi_str = f'{fit_hi[0]:+.6f}*pT{fit_hi[1]:+.6f}' if fit_hi else 'n/a'
+            log.write(
+                f'  [{label}]\n'
+                f'    fit (lo, pT<={SPLIT_PT:.0f}) = {lo_str}\n'
+                f'    fit (hi, pT> {SPLIT_PT:.0f}) = {hi_str}\n'
+                f'    <R\'_fit(pT)>_LL = {avg_LL:.6f}\n'
+                f'    <R\'_fit(pT)>_TL = {avg_TL:.6f}\n'
+                f'    <R\'_fit(pT)>_LT = {avg_LT:.6f}\n'
+                f'    correction       = {avg_LL:.6f} / ({avg_TL:.6f} * {avg_LT:.6f})'
+                f' = {factor:.6f}\n'
+            )
+        return factor
+
+    return correction_fn
+
+
 def write_ptcorr_log(acc, truth, combine_eras, quadrants, log_path):
     """Write a self-contained pT correction log to log_path.
 
@@ -496,7 +554,8 @@ def write_ptcorr_log(acc, truth, combine_eras, quadrants, log_path):
                 fit_lo, fit_hi, ref_rpfit = entry['lo'], entry['hi'], entry['ref_rpfit']
 
                 f.write(f'  ({era_str}, {lp})  <R\'_fit(pT)>_presel = {ref_rpfit:.5f}\n')
-                f.write(f'  {"pT (GeV)":>10}  {"regime":>6}  {"R\'_fit(pT)":>12}\n')
+                _hdr = "R'_fit(pT)"
+                f.write(f'  {"pT (GeV)":>10}  {"regime":>6}  {_hdr:>12}\n')
                 f.write(f'  {"─" * 34}\n')
                 for pt in probe_pts:
                     regime = 'lo' if pt <= SPLIT_PT else 'hi'
@@ -948,6 +1007,89 @@ def make_plot(acc, var_tag, x_labels, xlabel, get_bins_fn, x_coords=None, subtit
 
 
 # ---------------------------------------------------------------------------
+# Era comparison plot (Run 2 vs Run 3, combined-era mode only)
+# ---------------------------------------------------------------------------
+
+def make_era_comparison_plot(acc, truth, correction_fn=None, suffix=''):
+    """R' at preselection for Run 2 vs Run 3, one point per era per WP.
+
+    Only meaningful when running in combined-era mode; produces
+    rprime_vs_era_<truth>_Run2p3[_<suffix>].{pdf,png}.
+    """
+    fig, ax = plt.subplots(figsize=(7, 5))
+
+    xs     = np.arange(len(ERAS), dtype=float)
+    jitter = np.linspace(-0.1, 0.1, len(LP_WPS))
+
+    data_lo, data_hi = [], []
+
+    for idx, lp in enumerate(reversed(LP_WPS)):
+        xpos, yval, yerr = [], [], []
+        sty = SERIES_STYLES_COMBINED[lp]
+        for j, era in enumerate(ERAS):
+            bins = acc[REG_KEY][era][lp]['inclusive'][truth]['incl']['incl']['incl']
+            rv, re = _rp_corrected(bins, correction_fn, era, lp,
+                                   label=f'era_plot/{lp}/{era}')
+            if not math.isnan(rv):
+                xpos.append(xs[j] + jitter[idx])
+                yval.append(rv)
+                yerr.append(re)
+                data_lo.append(rv - re)
+                data_hi.append(rv + re)
+        if yval:
+            ax.errorbar(xpos, yval, yerr=yerr,
+                        fmt=sty['marker'], color=sty['color'],
+                        label=lp, capsize=3, markersize=5, linewidth=1)
+
+    DEFAULT_YMIN, DEFAULT_YMAX = 0.9, 1.8
+    if data_lo:
+        lo = min(data_lo)
+        hi = max(data_hi)
+        ymin_new = min(DEFAULT_YMIN, max(0., lo))
+        ymax_raw = max(DEFAULT_YMAX, hi + 0.25 * (hi - ymin_new))
+    else:
+        ymin_new, ymax_raw = DEFAULT_YMIN, DEFAULT_YMAX
+    ax.set_ylim(ymin_new, ymax_raw)
+
+    ax.axhline(1.0, color='k', linestyle='--', linewidth=0.7, alpha=0.5)
+    ax.yaxis.grid(True, linestyle='--', color='lightgray', linewidth=0.7, zorder=0)
+    ax.set_axisbelow(True)
+    ax.set_xticks(xs)
+    ax.set_xticklabels(ERAS, fontsize=10)
+    ax.set_xlabel('Run era', fontsize=13, loc='right')
+    ax.set_ylabel("R'", fontsize=13, loc='top')
+    ax.tick_params(axis='both', which='both', direction='in')
+    ax.set_xlim(xs[0] - 0.5, xs[-1] + 0.5)
+
+    t_atlas = ax.text(0.05, 0.97, 'ATLAS',
+                      transform=ax.transAxes, fontsize=13, va='top',
+                      fontweight='bold', fontstyle='italic')
+    fig.canvas.draw()
+    bb      = t_atlas.get_window_extent(renderer=fig.canvas.get_renderer())
+    x1_axes = ax.transAxes.inverted().transform((bb.x1, bb.y0))[0]
+    ax.text(x1_axes + 0.01, 0.97, 'Internal',
+            transform=ax.transAxes, fontsize=13, va='top')
+    ax.text(0.05, 0.90, 'Run 2 + Run 3',
+            transform=ax.transAxes, fontsize=10, va='top')
+    ax.text(0.05, 0.83, f'Preselection / 0L  \u2014  {truth}  \u2014  inclusive',
+            transform=ax.transAxes, fontsize=10, va='top', fontfamily='monospace')
+    if suffix:
+        ax.text(0.05, 0.76, f'({suffix})',
+                transform=ax.transAxes, fontsize=9, va='top', fontstyle='italic')
+
+    ax.legend(fontsize=9, framealpha=0.85, loc='upper right', bbox_to_anchor=(0.97, 0.97))
+    fig.tight_layout()
+
+    os.makedirs(OUTPUT_DIR, exist_ok=True)
+    file_sfx = f'_{suffix}' if suffix else ''
+    out = os.path.join(OUTPUT_DIR, f'rprime_vs_era_{truth}_Run2p3{file_sfx}')
+    for ext in ('pdf', 'png'):
+        fig.savefig(f'{out}.{ext}', dpi=150, bbox_inches='tight')
+    plt.close(fig)
+    print(f'Saved {out}.{{pdf,png}}')
+
+
+# ---------------------------------------------------------------------------
 # Per-variable table output (terminal and LaTeX)
 # ---------------------------------------------------------------------------
 
@@ -1078,7 +1220,8 @@ def print_syst_table(acc, truth, combine_eras, correction_fn=None, suffix=''):
             print()
             print(f'  {lp}')
             print(f'  {"─" * (W - 4)}')
-            hdr = f'  {"Variation":<22}  {"R\'":>10}  {"stat err":>10}  {"delta":>10}  {"delta (%)":>10}'
+            _rp = "R'"
+            hdr = f'  {"Variation":<22}  {_rp:>10}  {"stat err":>10}  {"delta":>10}  {"delta (%)":>10}'
             print(hdr)
             print(f'  {"─" * (W - 4)}')
 
@@ -1222,6 +1365,12 @@ if __name__ == '__main__':
               'R\'_fit(<pT>_presel) / R\'_fit(<pT>_bin) to remove the pT dependence '
               'seen across regions.  Corrected outputs get a "_ptcorr" filename suffix.'))
     plot_grp.add_argument(
+        '--correct-pt-v2', action='store_true',
+        help=('Also produce per-photon pT-corrected plots and tables (v2 method). '
+              'Each photon in the A/B/D sidebands is weighted by R\'_fit(pT); '
+              'the correction factor is <R\'_fit>_LL / (<R\'_fit>_TL * <R\'_fit>_LT). '
+              'Corrected outputs get a "_ptcorrv2" filename suffix.'))
+    plot_grp.add_argument(
         '--pt-avg-nonisolated', action='store_true',
         help=('When computing pT corrections, base the average pT on the non-isolated '
               'sideband (TL+LL quadrants) instead of the default non-tight sideband '
@@ -1288,22 +1437,29 @@ if __name__ == '__main__':
     print(f'Accumulating ntuples for all regions ...')
     acc = accumulate(DEFAULT_REGIONS)
 
-    # pre-compute pT correction function once (only if needed)
+    # pre-compute pT correction functions (only if needed)
     pt_quadrants = _PT_QUADRANTS_NONISOLATED if args.pt_avg_nonisolated else _PT_QUADRANTS_NONTIGHT
+    os.makedirs(OUTPUT_DIR, exist_ok=True)
+    era_tag = 'Run2p3' if args.combine_eras else 'byera'
+
     if args.correct_pt:
-        os.makedirs(OUTPUT_DIR, exist_ok=True)
-        era_tag  = 'Run2p3' if args.combine_eras else 'byera'
         log_path = os.path.join(OUTPUT_DIR, f'ptcorr_log_{args.truth}_{era_tag}.txt')
-        _log_fh  = open(log_path, 'w')
         write_ptcorr_log(acc, args.truth, args.combine_eras, pt_quadrants, log_path)
-        # re-open in append mode so per-call entries follow the setup sections
-        _log_fh.close()
         _log_fh = open(log_path, 'a')
-        corr_fn  = get_correction_fn(acc, args.truth, args.combine_eras, pt_quadrants, log=_log_fh)
+        corr_fn = get_correction_fn(acc, args.truth, args.combine_eras, pt_quadrants, log=_log_fh)
         print(f'pT correction log: {log_path}')
     else:
         corr_fn = None
         _log_fh = None
+
+    if args.correct_pt_v2:
+        log_path_v2 = os.path.join(OUTPUT_DIR, f'ptcorr_v2_log_{args.truth}_{era_tag}.txt')
+        _log_fh_v2  = open(log_path_v2, 'w')
+        corr_fn_v2  = get_correction_fn_v2(acc, args.truth, args.combine_eras, log=_log_fh_v2)
+        print(f'pT correction v2 log: {log_path_v2}')
+    else:
+        corr_fn_v2  = None
+        _log_fh_v2  = None
 
     # ---- plots, terminal summary tables, and/or latex table files ------------
     if not args.no_plots or args.tables or args.latex:
@@ -1321,7 +1477,7 @@ if __name__ == '__main__':
                 write_table_tex(acc, var_tag, x_labels, xlabel, get_bins_fn,
                                 truth=args.truth, subtitle=subtitle,
                                 combine_eras=args.combine_eras)
-            # pT-corrected (only when requested)
+            # pT-corrected v1 (only when requested)
             if args.correct_pt:
                 if not args.no_plots:
                     make_plot(acc, var_tag, x_labels, xlabel, get_bins_fn, x_coords, subtitle,
@@ -1337,6 +1493,30 @@ if __name__ == '__main__':
                                     truth=args.truth, subtitle=subtitle,
                                     combine_eras=args.combine_eras,
                                     correction_fn=corr_fn, suffix='ptcorr')
+            # pT-corrected v2 (per-photon method, only when requested)
+            if args.correct_pt_v2:
+                if not args.no_plots:
+                    make_plot(acc, var_tag, x_labels, xlabel, get_bins_fn, x_coords, subtitle,
+                              truth=args.truth, y_max=args.y_max, combine_eras=args.combine_eras,
+                              fit_pt=False, correction_fn=corr_fn_v2, suffix='ptcorrv2')
+                if args.tables:
+                    print_table_text(acc, var_tag, x_labels, xlabel, get_bins_fn,
+                                     truth=args.truth, subtitle=subtitle,
+                                     combine_eras=args.combine_eras,
+                                     correction_fn=corr_fn_v2, suffix='ptcorrv2')
+                if args.latex:
+                    write_table_tex(acc, var_tag, x_labels, xlabel, get_bins_fn,
+                                    truth=args.truth, subtitle=subtitle,
+                                    combine_eras=args.combine_eras,
+                                    correction_fn=corr_fn_v2, suffix='ptcorrv2')
+
+    # ---- era comparison plot (combine-eras mode only) ------------------------
+    if args.combine_eras and not args.no_plots:
+        make_era_comparison_plot(acc, args.truth)
+        if args.correct_pt:
+            make_era_comparison_plot(acc, args.truth, correction_fn=corr_fn, suffix='ptcorr')
+        if args.correct_pt_v2:
+            make_era_comparison_plot(acc, args.truth, correction_fn=corr_fn_v2, suffix='ptcorrv2')
 
     # ---- systematic uncertainty tables ---------------------------------------
     if args.syst:
@@ -1344,6 +1524,9 @@ if __name__ == '__main__':
         if args.correct_pt:
             print_syst_table(acc, args.truth, args.combine_eras,
                              correction_fn=corr_fn, suffix='ptcorr')
+        if args.correct_pt_v2:
+            print_syst_table(acc, args.truth, args.combine_eras,
+                             correction_fn=corr_fn_v2, suffix='ptcorrv2')
 
     # ---- full terminal breakdown tables --------------------------------------
     if args.fulltables:
@@ -1352,3 +1535,5 @@ if __name__ == '__main__':
 
     if _log_fh is not None:
         _log_fh.close()
+    if _log_fh_v2 is not None:
+        _log_fh_v2.close()
